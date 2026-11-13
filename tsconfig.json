@@ -21,7 +21,8 @@
       "@/*": ["./src/*"]
     },
     "types": ["node", "vitest/globals", "@testing-library/jest-dom"],
-    "allowJs": false
+    "allowJs": false,
+    "jsxImportSource": "nativewind"
   },
   "include": [
     "next-env.d.ts",
