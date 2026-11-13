@@ -8,6 +8,7 @@ Next.js 16 (App Router, TypeScript, **ESM**) web app for NuMo. Local-only for no
 - Branches: Conventional Branch, `<type>/<issue-number>-<slug>` (e.g. `feature/12-create-account`, `bugfix/…`).
 - Commits: `#<issue-number>: <description>`.
 - GitFlow: work branches start from and target `develop` (the default branch); only `release/*` and `hotfix/*` go to `main`. One commit per PR, except `release/*` → `main` and `main` → `develop`. CI enforces branch names and commits (`validate-branch`, `validate-commit`).
+- Releases: `release/x.y.z` from `develop` with the bumped `version`, PR into `main`, merged with a **merge commit**; CI tags it `tag_v-<version>.<YYYYMMDDHHMM>` and opens a `main` → `develop` sync PR, also merged with a merge commit (see `README.md`).
 - `.github/scripts/` is copied from `numo-api` (kebab-case names kept to match it): change both repos together.
 - This repo is public: don't reference other private projects in code, commits or PRs.
 
