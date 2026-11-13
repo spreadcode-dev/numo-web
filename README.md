@@ -1,5 +1,7 @@
 # numo-web
 
+[![PR Validation](https://github.com/spreadcode-dev/numo-web/actions/workflows/pr-validation.yml/badge.svg)](https://github.com/spreadcode-dev/numo-web/actions/workflows/pr-validation.yml)
+
 NuMo's web app, built with Next.js (App Router, TypeScript, ESM). For now it runs locally only.
 
 ## Prerequisites
@@ -47,7 +49,9 @@ No environment variables are needed yet (see [`.env.example`](.env.example)).
 | `yarn test:e2e:ui`    | End-to-end tests in Playwright's UI mode                       |
 | `yarn test:e2e:debug` | End-to-end tests with the Playwright inspector                 |
 
-Before opening a PR: `yarn format:check && yarn lint && yarn typecheck && yarn test:cov && yarn build && yarn test:e2e`.
+Before opening a PR: `yarn format:check && yarn lint && yarn typecheck && yarn test:cov && yarn build && yarn test:e2e` (the same gate CI runs, see [Continuous integration](#continuous-integration)).
+
+The coverage gate (80% of lines, branches, functions and statements) is set in [`vitest.config.ts`](vitest.config.ts), so it fails the same way locally and in CI. Coverage is measured over all of `src/`, except Next.js wiring (`layout.tsx`), specs and test helpers.
 
 ## End-to-end tests
 
@@ -61,6 +65,40 @@ CI=true yarn test:e2e  # builds and serves the production build, as CI will
 - Any browser console error or uncaught page error fails the test (see [`src/testing/e2eFixtures.ts`](src/testing/e2eFixtures.ts)).
 - The tests never need a running `numo-api`: mock its calls with `page.route()`.
 - On failure, open the HTML report with `yarn playwright show-report` (`playwright-report/`; traces in `test-results/`).
+
+## Continuous integration
+
+Every pull request targeting `main` (or `develop`) runs the **PR Validation** workflow ([`.github/workflows/pr-validation.yml`](.github/workflows/pr-validation.yml)). It has two jobs that run in parallel on the Node version from `.nvmrc` and the Yarn version from `packageManager` (shared setup in [`.github/actions/setup-yarn`](.github/actions/setup-yarn/action.yml)):
+
+- **`node-ci`**: `yarn install --immutable` → `yarn format:check` → `yarn lint` → `yarn typecheck` → `yarn test:cov` (80% coverage gate) → `yarn build`.
+- **`e2e-tests`**: installs Chromium (cached by Playwright version), then `CI=true yarn test:e2e` against the production build.
+
+Run the same gate locally before opening a PR:
+
+```bash
+yarn format:check && yarn lint && yarn typecheck && yarn test:cov && yarn build && CI=true yarn test:e2e
+```
+
+Each run's **Artifacts** (Actions → run) hold the HTML coverage report (`coverage-report`, also when a test or the coverage gate fails) and, when the e2e tests fail, the Playwright report (`playwright-report`; open it with `yarn playwright show-report <unzipped folder>`).
+
+The workflow uses a read-only `GITHUB_TOKEN`, pins third-party actions to commit SHAs and cancels outdated runs on the same branch. It needs no secrets: the e2e tests mock every API call.
+
+### Branch protection
+
+`main` requires the `node-ci` and `e2e-tests` checks to pass before a PR can be merged, and the rule applies to admins too (no bypass). GitHub only offers a check as required after it has run once, so a repository admin sets it once, after the first workflow run:
+
+```bash
+gh api -X PUT repos/spreadcode-dev/numo-web/branches/main/protection --input - <<'JSON'
+{
+  "required_status_checks": { "strict": true, "contexts": ["node-ci", "e2e-tests"] },
+  "enforce_admins": true,
+  "required_pull_request_reviews": null,
+  "restrictions": null
+}
+JSON
+```
+
+Check it with `gh api repos/spreadcode-dev/numo-web/branches/main/protection/required_status_checks`.
 
 ## Pre-commit hook
 
