@@ -28,3 +28,8 @@ coverage/
 .user-stories/
 .DS_Store
 *.log
+
+# Playwright reports and artifacts
+playwright-report/
+test-results/
+playwright/.cache/

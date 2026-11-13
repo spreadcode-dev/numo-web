@@ -15,6 +15,7 @@ nvm install && nvm use
 npm install -g corepack   # once per Node installation
 corepack enable
 yarn install --immutable  # also installs the Git pre-commit hook
+yarn playwright install chromium  # browser for the e2e tests
 ```
 
 Check: `node -v` prints `v26.x` and `yarn -v` prints `4.x`. If `yarn -v` prints `1.x`, the wrong Node version is active (run `nvm use`) or a global Yarn 1 (e.g. Homebrew) is earlier on your `PATH`.
@@ -30,20 +31,36 @@ No environment variables are needed yet (see [`.env.example`](.env.example)).
 
 ## Scripts
 
-| Command             | What it does                                                   |
-| ------------------- | -------------------------------------------------------------- |
-| `yarn dev`          | Dev server with hot reload on port 3001                        |
-| `yarn build`        | Production build (`.next/`)                                    |
-| `yarn start`        | Serves the production build on port 3001                       |
-| `yarn lint`         | Oxlint (type-aware); any warning fails                         |
-| `yarn format`       | Formats everything with Prettier                               |
-| `yarn format:check` | Fails if any file isn't Prettier-formatted                     |
-| `yarn typecheck`    | Generates Next.js route types, then `tsc --noEmit`             |
-| `yarn test`         | Unit tests (Vitest + Testing Library, jsdom)                   |
-| `yarn test:watch`   | Unit tests in watch mode                                       |
-| `yarn test:cov`     | Unit tests with coverage (`coverage/`), 80% minimum per metric |
+| Command               | What it does                                                   |
+| --------------------- | -------------------------------------------------------------- |
+| `yarn dev`            | Dev server with hot reload on port 3001                        |
+| `yarn build`          | Production build (`.next/`)                                    |
+| `yarn start`          | Serves the production build on port 3001                       |
+| `yarn lint`           | Oxlint (type-aware); any warning fails                         |
+| `yarn format`         | Formats everything with Prettier                               |
+| `yarn format:check`   | Fails if any file isn't Prettier-formatted                     |
+| `yarn typecheck`      | Generates Next.js route types, then `tsc --noEmit`             |
+| `yarn test`           | Unit tests (Vitest + Testing Library, jsdom)                   |
+| `yarn test:watch`     | Unit tests in watch mode                                       |
+| `yarn test:cov`       | Unit tests with coverage (`coverage/`), 80% minimum per metric |
+| `yarn test:e2e`       | End-to-end tests (Playwright, Chromium)                        |
+| `yarn test:e2e:ui`    | End-to-end tests in Playwright's UI mode                       |
+| `yarn test:e2e:debug` | End-to-end tests with the Playwright inspector                 |
 
-Before opening a PR: `yarn format:check && yarn lint && yarn typecheck && yarn test:cov && yarn build`.
+Before opening a PR: `yarn format:check && yarn lint && yarn typecheck && yarn test:cov && yarn build && yarn test:e2e`.
+
+## End-to-end tests
+
+[Playwright](https://playwright.dev/) specs live next to the route they test as `*.e2e.ts` (Vitest only runs `*.spec.ts(x)`, so the suites never overlap).
+
+```bash
+yarn test:e2e          # reuses a running `yarn dev` on :3001, or starts one
+CI=true yarn test:e2e  # builds and serves the production build, as CI will
+```
+
+- Any browser console error or uncaught page error fails the test (see [`src/testing/e2eFixtures.ts`](src/testing/e2eFixtures.ts)).
+- The tests never need a running `numo-api`: mock its calls with `page.route()`.
+- On failure, open the HTML report with `yarn playwright show-report` (`playwright-report/`; traces in `test-results/`).
 
 ## Pre-commit hook
 

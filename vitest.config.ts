@@ -17,8 +17,14 @@ export default defineConfig({
       // Without `include`, Vitest only measures files the tests import, so an
       // untested file would never lower the percentage.
       include: ['src/**/*.{ts,tsx}'],
-      // Root layouts render <html>/<body>, which jsdom can't mount inside a container.
-      exclude: ['src/**/layout.tsx', 'src/**/*.spec.{ts,tsx}'],
+      exclude: [
+        // Root layouts render <html>/<body>, which jsdom can't mount inside a container.
+        'src/**/layout.tsx',
+        'src/**/*.spec.{ts,tsx}',
+        // Browser-only code, covered by Playwright (`yarn test:e2e`) instead.
+        'src/**/*.e2e.ts',
+        'src/testing/**',
+      ],
       reporter: ['text', 'html', 'lcov'],
       reportOnFailure: true,
       thresholds: {
