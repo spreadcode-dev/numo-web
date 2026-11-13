@@ -9,9 +9,26 @@ export default defineConfig({
   resolve: { tsconfigPaths: true },
   test: {
     globals: true,
-    environment: 'jsdom',
-    setupFiles: ['./vitest.setup.ts'],
-    include: ['src/**/*.spec.{ts,tsx}'],
+    projects: [
+      {
+        extends: true,
+        test: {
+          name: 'unit',
+          environment: 'jsdom',
+          setupFiles: ['./vitest.setup.ts'],
+          include: ['src/**/*.spec.{ts,tsx}'],
+        },
+      },
+      {
+        extends: true,
+        test: {
+          // The CI scripts' specs spawn Bash and Git, so they need Node, not jsdom.
+          name: 'scripts',
+          environment: 'node',
+          include: ['.github/scripts/**/*.spec.ts'],
+        },
+      },
+    ],
     coverage: {
       provider: 'v8',
       // Without `include`, Vitest only measures files the tests import, so an

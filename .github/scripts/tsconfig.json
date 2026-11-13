@@ -1,0 +1,10 @@
+{
+  // Separate from the root config so Next.js's global types (next-env.d.ts),
+  // which make NODE_ENV a required env key, don't apply to these Node scripts.
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "types": ["node", "vitest/globals"],
+    "incremental": false
+  },
+  "include": ["**/*.ts"]
+}
