@@ -14,7 +14,7 @@ Next.js 16 (App Router, TypeScript, **ESM**) web app for NuMo. Local-only for no
 - **Yarn 4 only** (Corepack, `packageManager`); never npm, never commit `package-lock.json`.
 - Node 26 (`.nvmrc`). Corepack must be installed separately (`npm install -g corepack`).
 - Dev server runs on port **3001** (`numo-api` owns 3000).
-- Before handing work over: `yarn format:check && yarn lint && yarn typecheck && yarn test:cov && yarn build` must pass (80% coverage).
+- Before handing work over: `yarn format:check && yarn lint && yarn typecheck && yarn test:cov && yarn build && yarn test:e2e` must pass (80% coverage).
 - Never bypass the pre-commit hook (`--no-verify`).
 - Next.js 16 may differ from what you remember: check the docs bundled in `node_modules/next/dist/docs/` before using an API, and heed deprecation notices.
 
@@ -48,5 +48,9 @@ Next.js 16 (App Router, TypeScript, **ESM**) web app for NuMo. Local-only for no
 
 - Vitest (jsdom, globals on) + Testing Library; tests next to the code as `*.spec.ts(x)`.
 - Arrange–Act–Assert, one behaviour per test; query by role/label as a user would.
-- Domain: pure unit tests. Hooks/use cases: fake clients. Components: Testing Library.
+- Domain: pure unit tests. Hooks/use cases: fake clients. Components: Testing Library. User flows: Playwright.
+- E2E: Playwright (Chromium), specs next to the route as `*.e2e.ts` (e.g. `src/app/page.e2e.ts`). Browsers: `yarn playwright install chromium`.
+  - Import `test`/`expect` from `@/testing/e2eFixtures`, never from `@playwright/test`: its `page` fixture fails the test on any browser console error or uncaught page error.
+  - Never call the real `numo-api`: mock requests with `page.route()`, with shared defaults in the fixture. No fixed `waitForTimeout`; rely on auto-waiting assertions.
+  - `yarn test:e2e` reuses a running `yarn dev` (or starts one); `CI=true yarn test:e2e` builds and serves the production build.
 - Every new function gets a test; every bug fix gets a regression test.
