@@ -95,10 +95,11 @@ The workflow uses a read-only `GITHUB_TOKEN`, pins third-party actions to commit
 
 The conventions from [`CLAUDE.md`](CLAUDE.md) are checked on every pull request by small Bash scripts in [`.github/scripts/`](.github/scripts/), each tested by a Vitest spec next to it (Vitest project `scripts`, run by `yarn test`).
 
-| Job               | Rule                                                                                                                                                                            |
-| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `validate-branch` | The source branch is `main`, `develop`, `release/<version>` (e.g. `release/1.2.3`) or `<type>/<issue-number>-<slug>`, lowercase and hyphenated.                                 |
-| `validate-commit` | The PR has **exactly one commit**, and every non-merge commit is titled `#<issue-number>: <description>`. `release/*` → `main` and `main` → `develop` may have several commits. |
+| Job                    | Rule                                                                                                                                                                            |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `validate-branch`      | The source branch is `main`, `develop`, `release/<version>` (e.g. `release/1.2.3`) or `<type>/<issue-number>-<slug>`, lowercase and hyphenated.                                 |
+| `validate-commit`      | The PR has **exactly one commit**, and every non-merge commit is titled `#<issue-number>: <description>`. `release/*` → `main` and `main` → `develop` may have several commits. |
+| `validate-release-tag` | Only for `release/*` → `main`: the `version` in `package.json` hasn't been released yet (no `tag_v-<version>.*` tag on GitHub). Skipped for every other PR.                     |
 
 Allowed `<type>` prefixes: `feature`, `bugfix`, `hotfix`, `chore`, and `ai`, `copilot`, `cursor`, `claude`, `codex` for branches created by AI tools.
 
@@ -117,27 +118,30 @@ The scripts are shared with `numo-api` (same files in its `.github/scripts/`): c
 
 ### Branch protection
 
-`main` and `develop` both require a pull request (no approval needed, so a solo maintainer can merge their own) whose `node-ci`, `e2e-tests`, `validate-branch` and `validate-commit` checks pass on the latest base. The rule applies to admins too (no bypass). GitHub only offers a check as required after it has run once, so a repository admin sets this once:
+`main` and `develop` both require a pull request (no approval needed, so a solo maintainer can merge their own) whose `node-ci`, `e2e-tests`, `validate-branch` and `validate-commit` checks pass on the latest base. `main` also requires `validate-release-tag` (skipped, which counts as passed, for anything but release PRs).
+
+- On **`main`** the rules apply to admins too (no bypass).
+- On **`develop`** an admin can bypass them. That's only for the `main` → `develop` sync PR, which gets no CI run (see [main → develop sync](#main--develop-sync)). Every other PR into `develop` must pass its checks.
+
+GitHub only offers a check as required after it has run once, so a repository admin sets this once (for `validate-release-tag`, after the first release PR):
 
 ```bash
-for branch in main develop; do
-  gh api -X PUT "repos/spreadcode-dev/numo-web/branches/$branch/protection" --input - <<'JSON'
+protect() { # <branch> <enforce_admins> <checks…>
+  local branch=$1 enforce_admins=$2; shift 2
+  gh api -X PUT "repos/spreadcode-dev/numo-web/branches/$branch/protection" --input - <<JSON
 {
-  "required_status_checks": {
-    "strict": true,
-    "contexts": ["node-ci", "e2e-tests", "validate-branch", "validate-commit"]
-  },
-  "enforce_admins": true,
+  "required_status_checks": { "strict": true, "contexts": $(printf '%s\n' "$@" | jq -R . | jq -sc .) },
+  "enforce_admins": $enforce_admins,
   "required_pull_request_reviews": { "required_approving_review_count": 0 },
   "restrictions": null
 }
 JSON
-done
+}
+protect main true node-ci e2e-tests validate-branch validate-commit validate-release-tag
+protect develop false node-ci e2e-tests validate-branch validate-commit
 ```
 
-Check it with `gh api repos/spreadcode-dev/numo-web/branches/<branch>/protection/required_status_checks`.
-
-Because `develop` requires checks, a `main` → `develop` PR opened by a GitHub Actions bot (which doesn't trigger other workflows) would need an admin merge.
+Check it with `gh api repos/spreadcode-dev/numo-web/branches/<branch>/protection --jq '{checks: .required_status_checks.contexts, admins: .enforce_admins.enabled}'`.
 
 #### One-time setup of `develop`
 
@@ -150,6 +154,37 @@ gh api -X PATCH repos/spreadcode-dev/numo-web -f default_branch=develop
 ```
 
 Then apply the branch protection above.
+
+## Releases
+
+Every push to `main` is tagged `tag_v-<version>.<build>` by the **Release** workflow ([`.github/workflows/release.yml`](.github/workflows/release.yml)). `<version>` comes from `package.json` and `<build>` is the commit's UTC time as `YYYYMMDDHHMM`, e.g. `tag_v-0.1.0.202611101845`. The build part keeps tags unique even when a hotfix doesn't bump the version. Re-running the workflow for the same commit skips the existing tag. There's no deploy yet: the tag is the release.
+
+The tagging job is the only one with write access (`contents: write`), and it runs no project code or dependencies, just Git and jq.
+
+To release:
+
+1. Cut `release/x.y.z` from `develop`.
+2. Bump the version on it: `yarn version x.y.z` (or `yarn version patch|minor|major`), then commit `#<issue-number>: Release x.y.z`.
+3. Open a PR into `main`. `validate-release-tag` fails if `x.y.z` was already released.
+4. Merge it with a **merge commit**. The Release workflow tags the merge commit.
+5. Merge the `main` → `develop` sync PR that opens automatically (see below).
+
+For a hotfix, branch `hotfix/<issue-number>-<slug>` from `main`, bump the patch version in the same commit as the fix, and open a PR into `main`.
+
+List releases with `git ls-remote --tags origin 'tag_v-*'`, or check one version locally with `bash .github/scripts/validate-release-tag.sh <version>`.
+
+### main → develop sync
+
+After every push to `main` (release or hotfix), the **Sync main into develop** workflow ([`.github/workflows/sync-main-develop.yml`](.github/workflows/sync-main-develop.yml)) checks whether `develop` is missing commits from `main`. If it is, it opens a PR `Sync Release <version> (main into develop)` and lists the missing commits in the run log. If `develop` is up to date it does nothing, and if a sync PR is already open it doesn't open another: the open PR picks up the new commits. It never pushes to `develop` or merges by itself.
+
+- **Merge the sync PR with a merge commit**, not squash, to keep the release history on `develop`.
+- **No CI runs on it.** PRs opened with the workflow's `GITHUB_TOKEN` don't trigger other workflows, so PR Validation doesn't run and the required checks never report. The commits were already validated on their way to `main`, so an admin reviews it and merges it with **"Merge without waiting for requirements to be met (bypass rules)"**. Only `develop` allows that bypass (see [Branch protection](#branch-protection)).
+- **Required repo setting:** "Allow GitHub Actions to create and approve pull requests" (Settings → Actions → General). Without it, `gh pr create` fails. Check it with `gh api repos/spreadcode-dev/numo-web/actions/permissions/workflow` (`can_approve_pull_request_reviews: true`), and enable it with:
+
+```bash
+gh api -X PUT repos/spreadcode-dev/numo-web/actions/permissions/workflow \
+  -f default_workflow_permissions=read -F can_approve_pull_request_reviews=true
+```
 
 ## Pre-commit hook
 
