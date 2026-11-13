@@ -9,4 +9,12 @@ describe('HomePage', () => {
       screen.getByRole('heading', { level: 1, name: 'NuMo' }),
     ).toBeInTheDocument();
   });
+
+  it('should show the gluestack "Get started" button', () => {
+    render(<HomePage />);
+
+    expect(
+      screen.getByRole('button', { name: 'Get started' }),
+    ).toBeInTheDocument();
+  });
 });

@@ -195,6 +195,16 @@ gh api -X PUT repos/spreadcode-dev/numo-web/actions/permissions/workflow \
 
 Fixes are added to the commit automatically. Don't skip the hook with `--no-verify`; fix the error instead.
 
+## UI components
+
+Screens are built from [gluestack-ui v4](https://v4.gluestack.io/ui/docs/home/overview/introduction) components (NativeWind + Tailwind CSS, rendered through `react-native-web`). The generated components live in `src/components/ui/`. Add one with:
+
+```bash
+yarn dlx gluestack-ui@3.0.12 add <name> --use-yarn --path src/components/ui
+```
+
+Versions are pinned exactly. See [`CLAUDE.md`](CLAUDE.md#ui-kit-gluestack-ui-v4) for why v4, and for the Next.js and Vitest wiring.
+
 ## Project structure and conventions
 
 See [`CLAUDE.md`](CLAUDE.md): Clean Architecture by feature (`src/app/` for thin routes, `src/features/<feature>/` for the code), UI and test conventions.
