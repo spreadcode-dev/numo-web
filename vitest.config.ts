@@ -11,6 +11,11 @@ const MINIMUM_COVERAGE_PERCENT = 80;
 const reactNativeWebResolve = {
   alias: [
     { find: /^react-native$/, replacement: 'react-native-web' },
+    // Its CommonJS build requires react-native through Node, past the alias above.
+    {
+      find: /^react-native-safe-area-context$/,
+      replacement: 'react-native-safe-area-context/lib/module/index.js',
+    },
     {
       find: /^nativewind$/,
       replacement: fileURLToPath(
