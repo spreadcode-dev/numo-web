@@ -1,3 +1,9 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* react-native-web gives each top-level Text and TextInput `font: 14px System`
+   (the OS font) and marks them dir="auto"; nested text inherits from them. */
+html [dir='auto'] {
+  font-family: theme('fontFamily.sans');
+}

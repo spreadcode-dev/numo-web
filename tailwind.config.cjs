@@ -169,6 +169,13 @@ module.exports = {
         },
       },
       fontFamily: {
+        sans: [
+          'var(--font-plus-jakarta-sans)',
+          'system-ui',
+          '-apple-system',
+          '"Segoe UI"',
+          'sans-serif',
+        ],
         heading: undefined,
         body: undefined,
         mono: undefined,
