@@ -1,4 +1,4 @@
-import { Logo } from '@/features/shell/ui/logo/Logo';
+import { Logo } from '@/shared/ui/logo/Logo';
 import { ThemeToggle } from '@/features/shell/ui/themeToggle/ThemeToggle';
 
 export function Topbar() {
