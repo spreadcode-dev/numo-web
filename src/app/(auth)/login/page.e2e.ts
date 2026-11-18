@@ -57,6 +57,14 @@ test.describe('sign-in page', () => {
     );
   });
 
+  test('links to the sign-up page', async ({ page }) => {
+    await page.goto('/login');
+
+    await page.getByRole('link', { name: 'Create an account' }).click();
+
+    await expect(page).toHaveURL('/register');
+  });
+
   test('has 44 px fields', async ({ page }) => {
     await page.goto('/login');
 

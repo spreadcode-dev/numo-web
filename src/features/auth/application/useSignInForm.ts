@@ -11,10 +11,15 @@ export type SignIn = (credentials: Credentials) => Promise<SignInResult>;
 type SignInFormOptions = Readonly<{
   signIn: SignIn;
   onSignedIn: () => void;
+  initialEmail?: string;
 }>;
 
-export function useSignInForm({ signIn, onSignedIn }: SignInFormOptions) {
-  const [email, setEmail] = useState('');
+export function useSignInForm({
+  signIn,
+  onSignedIn,
+  initialEmail = '',
+}: SignInFormOptions) {
+  const [email, setEmail] = useState(initialEmail);
   const [password, setPassword] = useState('');
   const [isSending, setIsSending] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | undefined>();

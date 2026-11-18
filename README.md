@@ -39,10 +39,12 @@ The browser never calls [numo-api](https://github.com/spreadcode-dev/numo-api) d
 
 The default fits local development, so no `.env.local` is needed (see [`.env.example`](.env.example)). `next build` bakes the rewrite into the build: rebuild after changing `NUMO_API_URL`.
 
-### Sign in locally
+### Sign up and sign in locally
 
 1. Start numo-api on port 3000 (Postgres container, migrations, `JWT_ACCESS_SECRET`; see its README).
-2. Create a test user with the API's `curl` example:
+2. Run `yarn dev` and create an account at http://localhost:3001/register (password: 12–128 characters). You land on `/login` with an "Account created." banner and your email filled in; you're not signed in automatically.
+
+   Or create a test user with the API's `curl` example:
 
    ```bash
    curl -i -X POST localhost:3000/auth/register -H 'Content-Type: application/json' \
@@ -50,11 +52,11 @@ The default fits local development, so no `.env.local` is needed (see [`.env.exa
    # → 201 {"id":"…","email":"ana@example.com",…}
    ```
 
-3. Run `yarn dev` and sign in at http://localhost:3001/login. You land on `/`, and DevTools → Application → Cookies → `http://localhost:3001` shows the `refresh_token` cookie set through the proxy. The access token stays in memory only, never in `localStorage` or `sessionStorage`.
+3. Sign in at http://localhost:3001/login. You land on `/`, and DevTools → Application → Cookies → `http://localhost:3001` shows the `refresh_token` cookie set through the proxy. The access token stays in memory only, never in `localStorage` or `sessionStorage`.
 
 Use **Chromium (Chrome, Edge) or Firefox** locally: the refresh cookie is `Secure`, and Safari rejects `Secure` cookies on `http://localhost`.
 
-The login route allows 5 attempts per minute per IP; the 6th shows "Too many attempts. Try again in N seconds." Behind the proxy, numo-api sees every browser as the same client, so locally that budget is shared.
+The login and register routes each allow 5 attempts per minute per IP; the 6th shows "Too many attempts. Try again in N seconds." Behind the proxy, numo-api sees every browser as the same client, so locally that budget is shared.
 
 ## Scripts
 

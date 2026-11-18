@@ -1,4 +1,5 @@
 import { act, renderHook } from '@testing-library/react';
+import { rememberRegisteredEmail } from '@/features/auth/application/registeredEmailStore';
 import type { SignInResult } from '@/features/auth/domain/signIn';
 import { signIn } from '@/features/auth/infrastructure/authApiClient';
 import { useConnectedSignInForm } from './useConnectedSignInForm';
@@ -10,6 +11,14 @@ vi.mock('next/navigation', () => ({ useRouter: () => ({ replace }) }));
 vi.mock('@/features/auth/infrastructure/authApiClient');
 
 describe('useConnectedSignInForm', () => {
+  it('should start with the email remembered at sign-up', () => {
+    rememberRegisteredEmail('ana@example.com');
+
+    const { result } = renderHook(() => useConnectedSignInForm());
+
+    expect(result.current.email).toBe('ana@example.com');
+  });
+
   it('should go to the home page after signing in', async () => {
     vi.mocked(signIn).mockResolvedValue({
       kind: 'signedIn',

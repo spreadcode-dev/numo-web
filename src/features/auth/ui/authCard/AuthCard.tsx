@@ -5,9 +5,10 @@ type AuthCardProps = Readonly<{
   title: string;
   tagline: string;
   children: ReactNode;
+  footer?: ReactNode;
 }>;
 
-export function AuthCard({ title, tagline, children }: AuthCardProps) {
+export function AuthCard({ title, tagline, children, footer }: AuthCardProps) {
   return (
     <main className="flex min-h-screen flex-col items-center gap-8 bg-background-50 px-4 py-16">
       <Logo size="auth" />
@@ -18,6 +19,7 @@ export function AuthCard({ title, tagline, children }: AuthCardProps) {
         </div>
         {children}
       </section>
+      {footer}
     </main>
   );
 }

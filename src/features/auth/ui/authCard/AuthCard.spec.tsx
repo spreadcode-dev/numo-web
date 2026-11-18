@@ -37,4 +37,21 @@ describe('AuthCard', () => {
       screen.getByRole('button', { name: 'Inside the card' }),
     );
   });
+
+  it('should show the footer under the card, outside it', () => {
+    render(
+      <AuthCard
+        title="Create account"
+        tagline="Create your account with an email and a password."
+        footer={<p>Already have an account?</p>}
+      >
+        <button type="button">Inside the card</button>
+      </AuthCard>,
+    );
+
+    const footer = screen.getByText('Already have an account?');
+    const card = screen.getByRole('heading', { level: 1 }).closest('section');
+    expect(screen.getByRole('main')).toContainElement(footer);
+    expect(card).not.toContainElement(footer);
+  });
 });

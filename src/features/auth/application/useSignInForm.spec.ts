@@ -21,6 +21,18 @@ function answering(result: SignInResult) {
 }
 
 describe('useSignInForm', () => {
+  it('should start with the given email', () => {
+    const { result } = renderHook(() =>
+      useSignInForm({
+        signIn: answering({ kind: 'unavailable' }),
+        onSignedIn: vi.fn<() => void>(),
+        initialEmail: EMAIL,
+      }),
+    );
+
+    expect(result.current.email).toBe(EMAIL);
+  });
+
   it('should send the typed credentials', async () => {
     const signIn = answering({ kind: 'signedIn', accessToken: 'token-123' });
     const { result } = renderSignInForm(signIn);
