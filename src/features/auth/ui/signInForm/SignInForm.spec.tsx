@@ -7,6 +7,12 @@ vi.mock('./useConnectedSignInForm');
 type ConnectedSignInForm = ReturnType<typeof useConnectedSignInForm>;
 
 function renderSignInForm(overrides: Partial<ConnectedSignInForm> = {}) {
+  const form = mockConnectedSignInForm(overrides);
+  render(<SignInForm />);
+  return form;
+}
+
+function mockConnectedSignInForm(overrides: Partial<ConnectedSignInForm> = {}) {
   const form: ConnectedSignInForm = {
     email: '',
     setEmail: vi.fn<() => void>(),
@@ -19,7 +25,6 @@ function renderSignInForm(overrides: Partial<ConnectedSignInForm> = {}) {
     ...overrides,
   };
   vi.mocked(useConnectedSignInForm).mockReturnValue(form);
-  render(<SignInForm />);
   return form;
 }
 
@@ -65,6 +70,22 @@ describe('SignInForm', () => {
     renderSignInForm();
 
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('should show the account-created notice after a sign-up', () => {
+    mockConnectedSignInForm();
+
+    render(<SignInForm isAfterSignUp />);
+
+    expect(screen.getByRole('status')).toHaveTextContent('Account created.');
+  });
+
+  it('should hide the account-created notice once sign-in fails', () => {
+    mockConnectedSignInForm({ errorMessage: 'Invalid email or password.' });
+
+    render(<SignInForm isAfterSignUp />);
+
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
   });
 
   it('should show the failure message in an alert', () => {

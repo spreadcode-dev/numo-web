@@ -1,28 +1,23 @@
 'use client';
 
-import type { ComponentProps } from 'react';
 import { Button, ButtonText } from '@/components/ui/button';
-import {
-  FormControl,
-  FormControlLabel,
-  FormControlLabelText,
-} from '@/components/ui/form-control';
-import { Input, InputField } from '@/components/ui/input';
+import { AccountCreatedNotice } from '@/features/auth/ui/accountCreatedNotice/AccountCreatedNotice';
 import { FormAlert } from '@/features/auth/ui/formAlert/FormAlert';
+import { LabeledInput } from '@/features/auth/ui/labeledInput/LabeledInput';
 import { useConnectedSignInForm } from './useConnectedSignInForm';
 
-// @types/react-native predates the 'current-password' token, but
-// react-native-web passes autoComplete straight to the HTML attribute,
-// where it's the standard value password managers look for.
-type InputFieldAutoComplete = ComponentProps<typeof InputField>['autoComplete'];
+type SignInFormProps = Readonly<{ isAfterSignUp?: boolean }>;
 
-export function SignInForm() {
+export function SignInForm({ isAfterSignUp = false }: SignInFormProps) {
   const form = useConnectedSignInForm();
 
   return (
     <>
       {form.errorMessage !== undefined && (
         <FormAlert message={form.errorMessage} />
+      )}
+      {isAfterSignUp && form.errorMessage === undefined && (
+        <AccountCreatedNotice />
       )}
       <div className="flex flex-col gap-5">
         <LabeledInput
@@ -54,45 +49,5 @@ export function SignInForm() {
         </Button>
       </div>
     </>
-  );
-}
-
-type LabeledInputProps = Readonly<{
-  id: string;
-  label: string;
-  placeholder: string;
-  autoComplete: 'email' | 'current-password';
-  type?: 'password';
-  value: string;
-  onChangeText: (text: string) => void;
-  onSubmitEditing: () => void;
-}>;
-
-// gluestack gives every FormControl the same generated id and every
-// InputField the aria-label "Input Field", so both are set explicitly.
-function LabeledInput({
-  id,
-  label,
-  autoComplete,
-  ...fieldProps
-}: LabeledInputProps) {
-  return (
-    <FormControl id={id} className="gap-1.5">
-      <FormControlLabel className="mb-0">
-        <FormControlLabelText className="text-sm font-semibold">
-          {label}
-        </FormControlLabelText>
-      </FormControlLabel>
-      <Input size="lg" className="rounded-md border-outline-500">
-        <InputField
-          id={id}
-          aria-label={label}
-          autoComplete={autoComplete as InputFieldAutoComplete}
-          autoCapitalize="none"
-          className="text-base"
-          {...fieldProps}
-        />
-      </Input>
-    </FormControl>
   );
 }
