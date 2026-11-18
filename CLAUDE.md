@@ -27,7 +27,7 @@ Next.js 16 (App Router, TypeScript, **ESM**) web app for NuMo. Local-only for no
 - Features live in `src/features/<feature>/` (mirroring `numo-api` modules), with only the layers they need:
   - `domain/`: types and pure business rules (no React, no Next, no fetch).
   - `application/`: use cases / orchestration hooks depending on ports.
-  - `infrastructure/`: `numo-api` clients and DTO → domain mapping. The API base URL lives only here.
+  - `infrastructure/`: `numo-api` clients and DTO → domain mapping. Clients call same-origin `/api/...` paths; `next.config.ts` rewrites them to `NUMO_API_URL` (server-only env, default `http://localhost:3000`). Never call the API's own origin from the browser.
   - `ui/`: components.
 - Dependency rule: `ui`/`infrastructure` → `application` → `domain`.
 - `src/shared/` only for code a **second** feature actually needs. No empty folders or abstractions "for later".
@@ -54,16 +54,20 @@ Next.js 16 (App Router, TypeScript, **ESM**) web app for NuMo. Local-only for no
   - Tailwind/PostCSS configs are `.cjs` because the repo is ESM.
 - Vitest (`unit` project) aliases `react-native` → `react-native-web`, resolves `.web.*` files first, and swaps `nativewind` for [`src/testing/nativewindStub.ts`](src/testing/nativewindStub.ts) with React's own JSX runtime. NativeWind's runtime only compiles inside an app bundler. Unit tests check structure and roles; styling is checked by Playwright.
   - `react-native-safe-area-context` is aliased to its ES-module build: its CommonJS build `require`s `react-native` through Node, past Vite's alias. Another React Native package failing with `Cannot find module 'react-native'` needs the same fix.
+- Form-field quirks (see `LabeledInput` in `src/features/auth/ui/signInForm/`):
+  - every `FormControl` gets the same generated id and every `InputField` the aria-label "Input Field", so pass `id` and `aria-label` explicitly;
+  - `@types/react-native` predates `autoComplete` tokens like `current-password`, which react-native-web passes straight to HTML: cast at that one prop.
+  - A gluestack `Button` is a `div role="button"`: disabled shows as `aria-disabled="true"`, not `disabled`.
 
 ## Theme and brand
 
-- **Colors come from tokens only**: classes like `bg-background-0`, `text-typography-900`, `border-outline-200`, `bg-primary-500`; never hex values. Tokens switch with the theme. The one exception is the logo mark (`src/features/shell/ui/logo/`), whose brand colors stay fixed on light and dark (logo sheet: "On dark").
+- **Colors come from tokens only**: classes like `bg-background-0`, `text-typography-900`, `border-outline-200`, `bg-primary-500`; never hex values. Tokens switch with the theme. The one exception is the logo mark (`src/shared/ui/logo/`), whose brand colors stay fixed on light and dark (logo sheet: "On dark").
 - **Dark mode** is the `.dark` class on `<html>` (Tailwind `darkMode: 'class'`).
   - `ThemeScript`, an inline `<head>` script, applies the saved choice (`localStorage.theme`) or the OS preference **before the first paint**.
   - `ThemeModeProvider` adopts that class and passes it to `GluestackUIProvider` as `mode`. Never hardcode `mode`: the provider rewrites the class on `<html>` from it.
   - `<html suppressHydrationWarning>` exists only for that class.
 - **Font:** Plus Jakarta Sans through `next/font` (`--font-plus-jakarta-sans`, Tailwind's `sans`). react-native-web forces the OS font on its text, so `globals.css` sets the family on `html [dir='auto']`: gluestack text needs no font class.
-- **App frame:** pages in the `src/app/(shell)/` route group get the top bar. Pages outside it (sign-in, sign-up) don't, and show the centered logo instead.
+- **App frame:** pages in the `src/app/(shell)/` route group get the top bar. Sign-in and sign-up live in `src/app/(auth)/`, without it, and show the centered logo in `AuthCard` instead.
 - After moving or renaming a route, a stale `.next/` can make `yarn typecheck` fail with `Cannot find module '…/src/app/…'`: delete `.next/` (it's regenerated).
 
 ## Clean Code
@@ -80,6 +84,7 @@ Next.js 16 (App Router, TypeScript, **ESM**) web app for NuMo. Local-only for no
 - Domain: pure unit tests. Hooks/use cases: fake clients. Components: Testing Library. User flows: Playwright.
 - E2E: Playwright (Chromium), specs next to the route as `*.e2e.ts` (e.g. `src/app/page.e2e.ts`). Browsers: `yarn playwright install chromium`.
   - Import `test`/`expect` from `@/testing/e2eFixtures`, never from `@playwright/test`: its `page` fixture fails the test on any browser console error or uncaught page error.
-  - Never call the real `numo-api`: mock requests with `page.route()`, with shared defaults in the fixture. No fixed `waitForTimeout`; rely on auto-waiting assertions.
+  - Never call the real `numo-api`: mock requests with `page.route('**/api/…')`. The fixture aborts any unmocked `/api/*` call and fails the test, and it ignores Chromium's "Failed to load resource" console line only for mocked `/api/*` error responses. No fixed `waitForTimeout`; rely on auto-waiting assertions.
+  - Query the app's alerts inside `<main>` (`page.getByRole('main').getByRole('alert')`): Next.js adds its own hidden `role="alert"` route announcer.
   - `yarn test:e2e` reuses a running `yarn dev` (or starts one); `CI=true yarn test:e2e` builds and serves the production build.
 - Every new function gets a test; every bug fix gets a regression test.
