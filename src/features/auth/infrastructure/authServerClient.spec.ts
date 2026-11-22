@@ -1,4 +1,4 @@
-import { register } from './authServerClient';
+import { register, signIn } from './authServerClient';
 
 const CREDENTIALS = {
   email: 'ana@example.com',
@@ -11,9 +11,28 @@ function stubFetch(response: Response) {
   return fetchMock;
 }
 
+const NOW = new Date('2026-11-22T12:00:00.000Z');
+const REFRESH_TOKEN_EXPIRES = 'Tue, 22 Dec 2026 12:00:00 GMT';
+const REFRESH_TOKEN_COOKIE = `refresh_token=refresh-123; Path=/auth; Expires=${REFRESH_TOKEN_EXPIRES}; HttpOnly; Secure; SameSite=Strict`;
+const LOGIN_BODY = {
+  accessToken: 'access-123',
+  tokenType: 'Bearer',
+  expiresIn: 900,
+};
+
+function loggedIn(
+  body: unknown = LOGIN_BODY,
+  setCookie: readonly string[] = [REFRESH_TOKEN_COOKIE],
+): Response {
+  const headers = new Headers();
+  setCookie.forEach((line) => headers.append('Set-Cookie', line));
+  return Response.json(body, { headers });
+}
+
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.unstubAllEnvs();
+  vi.useRealTimers();
 });
 
 describe('register', () => {
@@ -140,5 +159,99 @@ describe('register', () => {
     await expect(register(CREDENTIALS)).resolves.toEqual({
       kind: 'unavailable',
     });
+  });
+});
+
+describe('signIn', () => {
+  it('should post only the email and password to numo-api’s login route', async () => {
+    vi.stubEnv('NUMO_API_URL', 'http://numo-api.test');
+    const fetchMock = stubFetch(loggedIn());
+
+    const withExtraField = { ...CREDENTIALS, isAdmin: true };
+
+    await signIn(withExtraField);
+
+    expect(fetchMock).toHaveBeenCalledWith('http://numo-api.test/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(CREDENTIALS),
+    });
+  });
+
+  it('should start a session from the body’s access token and the refresh token cookie on 200', async () => {
+    vi.useFakeTimers({ now: NOW, toFake: ['Date'] });
+    stubFetch(loggedIn());
+
+    await expect(signIn(CREDENTIALS)).resolves.toEqual({
+      kind: 'signedIn',
+      session: {
+        accessToken: 'access-123',
+        accessTokenExpiresAt: new Date('2026-11-22T12:15:00.000Z'),
+        refreshToken: 'refresh-123',
+        refreshTokenExpiresAt: new Date(REFRESH_TOKEN_EXPIRES),
+      },
+    });
+  });
+
+  it('should report unavailable when a 200 sets no refresh token cookie', async () => {
+    stubFetch(loggedIn(LOGIN_BODY, []));
+
+    await expect(signIn(CREDENTIALS)).resolves.toEqual({ kind: 'unavailable' });
+  });
+
+  it.each([
+    { tokenType: 'Bearer', expiresIn: 900 },
+    { accessToken: 'access-123', tokenType: 'Bearer' },
+    { accessToken: 'access-123', expiresIn: '900' },
+    { accessToken: 'access-123', expiresIn: 0 },
+  ])(
+    'should report unavailable when a 200 body is incomplete (%o)',
+    async (body) => {
+      stubFetch(loggedIn(body));
+
+      await expect(signIn(CREDENTIALS)).resolves.toEqual({
+        kind: 'unavailable',
+      });
+    },
+  );
+
+  it.each([400, 401])(
+    'should report invalid credentials on %i',
+    async (status) => {
+      stubFetch(new Response(undefined, { status }));
+
+      await expect(signIn(CREDENTIALS)).resolves.toEqual({
+        kind: 'invalidCredentials',
+      });
+    },
+  );
+
+  it('should read the wait from Retry-After on 429', async () => {
+    stubFetch(
+      new Response(undefined, {
+        status: 429,
+        headers: { 'Retry-After': '42' },
+      }),
+    );
+
+    await expect(signIn(CREDENTIALS)).resolves.toEqual({
+      kind: 'rateLimited',
+      retryAfterSeconds: 42,
+    });
+  });
+
+  it('should report unavailable on a server error', async () => {
+    stubFetch(new Response(undefined, { status: 500 }));
+
+    await expect(signIn(CREDENTIALS)).resolves.toEqual({ kind: 'unavailable' });
+  });
+
+  it('should report unavailable when numo-api is unreachable', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn<typeof fetch>().mockRejectedValue(new TypeError('fetch failed')),
+    );
+
+    await expect(signIn(CREDENTIALS)).resolves.toEqual({ kind: 'unavailable' });
   });
 });

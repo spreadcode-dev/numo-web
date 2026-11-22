@@ -1,6 +1,5 @@
 import { act, renderHook } from '@testing-library/react';
 import type { SignInResult } from '@/features/auth/domain/signIn';
-import { readAccessToken } from './sessionStore';
 import { type SignIn, useSignInForm } from './useSignInForm';
 
 const EMAIL = 'ana@example.com';
@@ -34,7 +33,7 @@ describe('useSignInForm', () => {
   });
 
   it('should send the typed credentials', async () => {
-    const signIn = answering({ kind: 'signedIn', accessToken: 'token-123' });
+    const signIn = answering({ kind: 'signedIn' });
     const { result } = renderSignInForm(signIn);
 
     await act(() => result.current.submit());
@@ -42,21 +41,18 @@ describe('useSignInForm', () => {
     expect(signIn).toHaveBeenCalledWith({ email: EMAIL, password: PASSWORD });
   });
 
-  it('should keep the token in memory and report the sign-in on success', async () => {
+  it('should report the sign-in on success', async () => {
     const { result, onSignedIn } = renderSignInForm(
-      answering({ kind: 'signedIn', accessToken: 'token-123' }),
+      answering({ kind: 'signedIn' }),
     );
 
     await act(() => result.current.submit());
 
-    expect(readAccessToken()).toBe('token-123');
     expect(onSignedIn).toHaveBeenCalledOnce();
   });
 
   it('should stay sending after a success, while the next page loads', async () => {
-    const { result } = renderSignInForm(
-      answering({ kind: 'signedIn', accessToken: 'token-123' }),
-    );
+    const { result } = renderSignInForm(answering({ kind: 'signedIn' }));
 
     await act(() => result.current.submit());
 

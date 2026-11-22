@@ -1,14 +1,14 @@
 import { act, renderHook } from '@testing-library/react';
 import { rememberRegisteredEmail } from '@/features/auth/application/registeredEmailStore';
 import type { SignInResult } from '@/features/auth/domain/signIn';
-import { signIn } from '@/features/auth/infrastructure/authApiClient';
+import { signInAction } from '@/features/auth/infrastructure/authActions';
 import { useConnectedSignInForm } from './useConnectedSignInForm';
 
 const { replace } = vi.hoisted(() => ({
   replace: vi.fn<(href: string) => void>(),
 }));
 vi.mock('next/navigation', () => ({ useRouter: () => ({ replace }) }));
-vi.mock('@/features/auth/infrastructure/authApiClient');
+vi.mock('@/features/auth/infrastructure/authActions');
 
 describe('useConnectedSignInForm', () => {
   it('should start with the email remembered at sign-up', () => {
@@ -20,10 +20,7 @@ describe('useConnectedSignInForm', () => {
   });
 
   it('should go to the home page after signing in', async () => {
-    vi.mocked(signIn).mockResolvedValue({
-      kind: 'signedIn',
-      accessToken: 'token-123',
-    });
+    vi.mocked(signInAction).mockResolvedValue({ kind: 'signedIn' });
     const { result } = renderHook(() => useConnectedSignInForm());
 
     await act(async () => result.current.submit());
@@ -39,12 +36,23 @@ describe('useConnectedSignInForm', () => {
 
   it('should label the button "Signing in…" while sending', async () => {
     const pending = Promise.withResolvers<SignInResult>();
-    vi.mocked(signIn).mockReturnValue(pending.promise);
+    vi.mocked(signInAction).mockReturnValue(pending.promise);
     const { result } = renderHook(() => useConnectedSignInForm());
 
     act(() => result.current.submit());
 
     expect(result.current.submitLabel).toBe('Signing in…');
     await act(async () => pending.resolve({ kind: 'unavailable' }));
+  });
+
+  it('should show "Something went wrong" when the server can’t be reached', async () => {
+    vi.mocked(signInAction).mockRejectedValue(new TypeError('Failed to fetch'));
+    const { result } = renderHook(() => useConnectedSignInForm());
+
+    await act(async () => result.current.submit());
+
+    expect(result.current.errorMessage).toBe(
+      'Something went wrong. Try again.',
+    );
   });
 });

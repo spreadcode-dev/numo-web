@@ -27,9 +27,10 @@ Next.js 16 (App Router, TypeScript, **ESM**) web app for NuMo. Local-only for no
 - Features live in `src/features/<feature>/` (mirroring `numo-api` modules), with only the layers they need:
   - `domain/`: types and pure business rules (no React, no Next, no fetch).
   - `application/`: use cases / orchestration hooks depending on ports.
-  - `infrastructure/`: `numo-api` clients and DTO → domain mapping. Clients are **server-only** (`import 'server-only'`) and call `NUMO_API_URL` (server-only env, default `http://localhost:3000`) server to server; the browser reaches them through Server Actions (`'use server'`, e.g. `authActions.ts`). Never call `numo-api` from the browser. Sign-in still goes through the `/api/...` rewrite in `next.config.ts` until it moves server-side too.
+  - `infrastructure/`: `numo-api` clients and DTO → domain mapping. Clients are **server-only** (`import 'server-only'`) and call `NUMO_API_URL` (server-only env, default `http://localhost:3000`) server to server; the browser reaches them through Server Actions (`'use server'`, e.g. `authActions.ts`). Never call `numo-api` from the browser. There's no `/api` proxy.
   - `ui/`: components.
 - Dependency rule: `ui`/`infrastructure` → `application` → `domain`.
+- **Session:** after sign-in, numo-api's tokens live only in the `numo_session` cookie (`auth/infrastructure/sessionCookie.ts`): JWE `dir` + `A256GCM` under `SESSION_SECRET` (server-only, ≥ 32 bytes, checked on use), HttpOnly, Secure, `SameSite=Lax`. A Server Action's return value reaches the browser, so it never carries a token, and numo-api's `refresh_token` cookie is never forwarded. Specs that use `jose` run in Node (`// @vitest-environment node`): under jsdom it rejects Node's `Buffer` keys.
 - `src/shared/` only for code a **second** feature actually needs. No empty folders or abstractions "for later".
 - Import across folders with the `@/*` alias (`@/features/accounts/domain/money`).
 
@@ -85,7 +86,7 @@ Next.js 16 (App Router, TypeScript, **ESM**) web app for NuMo. Local-only for no
 - E2E: Playwright (Chromium), specs next to the route as `*.e2e.ts` (e.g. `src/app/page.e2e.ts`). Browsers: `yarn playwright install chromium`.
   - Import `test`/`expect` from `@/testing/e2eFixtures`, never from `@playwright/test`: its `page` fixture fails the test on any browser console error or uncaught page error.
   - Never call the real `numo-api`. Server-side calls (Server Actions) go to the `numoApi` fixture, an in-process mock `numo-api` on port 3998 ([`src/testing/numoApiMock.ts`](src/testing/numoApiMock.ts)): `numoApi.respond('POST /auth/register', reply)`, `numoApi.goDown(route)`, and `numoApi.calls` to assert what it received. An unmocked call answers `500` and fails the test with its method and path.
-  - Browser calls to `/api/*` (sign-in, for now) are mocked with `page.route('**/api/…')`. The fixture aborts any unmocked `/api/*` call and fails the test, and it ignores Chromium's "Failed to load resource" console line only for mocked `/api/*` error responses. No fixed `waitForTimeout`; rely on auto-waiting assertions.
+  - Every numo-api call is server-side, so the fixture aborts any browser request to `/api/` and fails the test. No fixed `waitForTimeout`; rely on auto-waiting assertions.
   - Query the app's alerts inside `<main>` (`page.getByRole('main').getByRole('alert')`): Next.js adds its own hidden `role="alert"` route announcer.
-  - `yarn test:e2e` starts its own Next.js server on 3002 with `NUMO_API_URL` pointing at the mock and its own build directory (`NEXT_DIST_DIR=.next-e2e`, since Next.js locks `.next` while `yarn dev` runs), so it never reuses `yarn dev`. `CI=true yarn test:e2e` builds and serves the production build.
+  - `yarn test:e2e` starts its own Next.js server on 3002 with `NUMO_API_URL` pointing at the mock, a test-only `SESSION_SECRET` and its own build directory (`NEXT_DIST_DIR=.next-e2e`, since Next.js locks `.next` while `yarn dev` runs), so it never reuses `yarn dev`. `CI=true yarn test:e2e` builds and serves the production build.
 - Every new function gets a test; every bug fix gets a regression test.
