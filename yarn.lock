@@ -2777,6 +2777,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"jose@npm:^6.2.18":
+  version: 6.2.18
+  resolution: "jose@npm:6.2.18"
+  checksum: 10c0/95144c43dfa0c8206f13f8133ed74ba9106785df81c864d6399af06616ad8fdbdc18937109aac099f560f6159aaf2fe2fca3984a6629c899af396a1e9986008d
+  languageName: node
+  linkType: hard
+
 "js-tokens@npm:^10.0.0":
   version: 10.0.0
   resolution: "js-tokens@npm:10.0.0"
@@ -3405,6 +3412,7 @@ __metadata:
     autoprefixer: "npm:10.6.2"
     dom-helpers: "npm:5.2.1"
     husky: "npm:^9.1.7"
+    jose: "npm:^6.2.18"
     jsdom: "npm:^31.0.0"
     lint-staged: "npm:^17.6.0"
     nativewind: "npm:4.2.7"

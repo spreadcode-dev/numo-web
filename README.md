@@ -31,18 +31,21 @@ yarn build && yarn start  # production build on http://localhost:3001
 
 ### Connection to numo-api
 
-The browser never calls [numo-api](https://github.com/spreadcode-dev/numo-api) directly. Sign-up runs as a Server Action: the browser posts to this app, and the Next.js server calls numo-api server to server. Sign-in, for now, calls `/api/*` on this app, which the Next.js server forwards to numo-api (a rewrite in [`next.config.ts`](next.config.ts)). Either way there's no CORS, and the API's `SameSite=Strict` refresh cookie stays first-party.
+The browser never calls [numo-api](https://github.com/spreadcode-dev/numo-api) directly. Sign-up and sign-in run as Server Actions: the browser posts to this app, and the Next.js server calls numo-api server to server. There's no `/api` proxy: `/api/*` answers `404`.
 
-| Variable       | Default                 | Meaning                                                                   |
-| -------------- | ----------------------- | ------------------------------------------------------------------------- |
-| `NUMO_API_URL` | `http://localhost:3000` | numo-api base URL the server calls and forwards `/api/*` to (server-only) |
+After sign-in, the server keeps both tokens in one cookie, `numo_session`: encrypted and tamper-proof with `SESSION_SECRET` (JWE, `A256GCM`), HttpOnly, Secure and `SameSite=Lax`, expiring with the refresh token. numo-api's own `refresh_token` cookie never reaches the browser.
 
-The default fits local development, so no `.env.local` is needed (see [`.env.example`](.env.example)). `next build` bakes the rewrite into the build: rebuild after changing `NUMO_API_URL`.
+| Variable         | Default                 | Meaning                                                                                |
+| ---------------- | ----------------------- | -------------------------------------------------------------------------------------- |
+| `NUMO_API_URL`   | `http://localhost:3000` | numo-api base URL the server calls (server-only)                                       |
+| `SESSION_SECRET` | none (required)         | Key for the session cookie, at least 32 bytes (server-only): `openssl rand -base64 48` |
+
+`NUMO_API_URL`'s default fits local development, but `SESSION_SECRET` has none: copy [`.env.example`](.env.example) to `.env.local` and fill it in. Without it, or with a shorter one, sign-in shows "Something went wrong. Try again." and the server log names `SESSION_SECRET`.
 
 ### Sign up and sign in locally
 
 1. Start numo-api on port 3000 (Postgres container, migrations, `JWT_ACCESS_SECRET`; see its README).
-2. Run `yarn dev` and create an account at http://localhost:3001/register (password: 12–128 characters). You land on `/login` with an "Account created." banner and your email filled in; you're not signed in automatically. DevTools → Network shows the sign-up as `POST /register` (a Server Action), not a call to `/api/auth/register`.
+2. Set a session secret once (`echo "SESSION_SECRET=$(openssl rand -base64 48)" >> .env.local`), run `yarn dev` and create an account at http://localhost:3001/register (password: 12–128 characters). You land on `/login` with an "Account created." banner and your email filled in; you're not signed in automatically. DevTools → Network shows the sign-up as `POST /register` (a Server Action), not a call to `/api/auth/register`.
 
    Or create a test user with the API's `curl` example:
 
@@ -52,11 +55,11 @@ The default fits local development, so no `.env.local` is needed (see [`.env.exa
    # → 201 {"id":"…","email":"ana@example.com",…}
    ```
 
-3. Sign in at http://localhost:3001/login. You land on `/`, and DevTools → Application → Cookies → `http://localhost:3001` shows the `refresh_token` cookie set through the proxy. The access token stays in memory only, never in `localStorage` or `sessionStorage`.
+3. Sign in at http://localhost:3001/login. You land on `/`. DevTools → Application → Cookies → `http://localhost:3001` shows `numo_session` (HttpOnly, Secure, `SameSite=Lax`) and no `refresh_token`. DevTools → Network shows the sign-in as `POST /login` (a Server Action) and no request to `/api/...`.
 
-Use **Chromium (Chrome, Edge) or Firefox** locally: the refresh cookie is `Secure`, and Safari rejects `Secure` cookies on `http://localhost`.
+Use **Chromium (Chrome, Edge) or Firefox** locally: the session cookie is `Secure`, and Safari rejects `Secure` cookies on `http://localhost`.
 
-The login and register routes each allow 5 attempts per minute per IP; the 6th shows "Too many attempts. Try again in N seconds." Behind the proxy, numo-api sees every browser as the same client, so locally that budget is shared.
+The login and register routes each allow 5 attempts per minute per IP; the 6th shows "Too many attempts. Try again in N seconds." The Next.js server makes both calls, so numo-api sees every browser as the same client, and locally that budget is shared.
 
 ## Scripts
 
@@ -89,8 +92,8 @@ yarn test:e2e          # starts its own server on :3002 (dev mode), even while `
 CI=true yarn test:e2e  # builds and serves the production build, as CI will
 ```
 
-- Any browser console error or uncaught page error fails the test (see [`src/testing/e2eFixtures.ts`](src/testing/e2eFixtures.ts)). The only exception is Chromium's "Failed to load resource" line for a mocked `/api/*` error response (a `401` the app handles, for example).
-- The tests never need a running `numo-api`. The e2e server's `NUMO_API_URL` points at an in-process mock (`numoApi` fixture, port 3998, [`src/testing/numoApiMock.ts`](src/testing/numoApiMock.ts)): each test scripts its replies with `numoApi.respond(…)` / `numoApi.goDown(…)` and checks what it received in `numoApi.calls`. Browser calls to `/api/*` (sign-in, for now) are mocked with `page.route('**/api/…', …)`. Any call nobody mocked fails the test.
+- Any browser console error or uncaught page error fails the test, and so does any browser request to `/api/`: every numo-api call is server-side (see [`src/testing/e2eFixtures.ts`](src/testing/e2eFixtures.ts)).
+- The tests never need a running `numo-api`. The e2e server's `NUMO_API_URL` points at an in-process mock (`numoApi` fixture, port 3998, [`src/testing/numoApiMock.ts`](src/testing/numoApiMock.ts)): each test scripts its replies with `numoApi.respond(…)` / `numoApi.goDown(…)` and checks what it received in `numoApi.calls`. Any call nobody mocked fails the test. The e2e server also gets a test-only `SESSION_SECRET` from [`playwright.config.ts`](playwright.config.ts).
 - On failure, open the HTML report with `yarn playwright show-report` (`playwright-report/`; traces in `test-results/`).
 
 ## Branch flow (GitFlow)

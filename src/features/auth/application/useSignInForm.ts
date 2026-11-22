@@ -4,7 +4,6 @@ import {
   type SignInResult,
   signInFailureMessage,
 } from '@/features/auth/domain/signIn';
-import { saveAccessToken } from './sessionStore';
 
 export type SignIn = (credentials: Credentials) => Promise<SignInResult>;
 
@@ -30,7 +29,6 @@ export function useSignInForm({
     setErrorMessage(undefined);
     const result = await signIn({ email, password });
     if (result.kind === 'signedIn') {
-      saveAccessToken(result.accessToken);
       onSignedIn();
       return;
     }

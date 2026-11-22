@@ -1,10 +1,16 @@
-import type { Page, Route } from '@playwright/test';
+import type { Page, Response as PageResponse } from '@playwright/test';
 import { expect, test } from '@/testing/e2eFixtures';
+import type { MockReply, NumoApiMock } from '@/testing/numoApiMock';
 
-const SIGN_IN_API = '**/api/auth/login';
+const LOGIN = 'POST /auth/login';
+const SESSION_COOKIE = 'numo_session';
 const EMAIL = 'ana@example.com';
 const PASSWORD = 'correct-horse-battery';
 const ACCESS_TOKEN = 'access-token-from-the-api';
+const REFRESH_TOKEN = 'refresh-token-from-the-api';
+const REFRESH_TOKEN_LIFETIME_MS = 30 * 24 * 60 * 60 * 1000;
+const INVALID_CREDENTIALS = 'Invalid email or password.';
+const SOMETHING_WENT_WRONG = 'Something went wrong. Try again.';
 
 // Colors from the NuMo design canvas (boards "Sign in · default" and "401").
 const LIGHT = {
@@ -14,19 +20,21 @@ const LIGHT = {
 };
 const DARK = { page: 'rgb(39, 38, 37)', card: 'rgb(18, 18, 18)' };
 
-const signedIn = (route: Route) =>
-  route.fulfill({
-    json: { accessToken: ACCESS_TOKEN, tokenType: 'Bearer', expiresIn: 900 },
-  });
-
-const failingWith =
-  (status: number, headers: Record<string, string> = {}) =>
-  (route: Route) =>
-    route.fulfill({ status, headers });
+// numo-api's login reply, as documented in its README: the access token in
+// the body, the refresh token in an HttpOnly cookie on Path=/auth.
+const LOGGED_IN: MockReply = {
+  status: 200,
+  json: { accessToken: ACCESS_TOKEN, tokenType: 'Bearer', expiresIn: 900 },
+  headers: {
+    'Set-Cookie': `refresh_token=${REFRESH_TOKEN}; Path=/auth; Expires=${new Date(Date.now() + REFRESH_TOKEN_LIFETIME_MS).toUTCString()}; HttpOnly; Secure; SameSite=Strict`,
+  },
+};
 
 const emailField = (page: Page) => page.getByRole('textbox', { name: 'Email' });
 const passwordField = (page: Page) =>
   page.getByLabel('Password', { exact: true });
+const signInButton = (page: Page) =>
+  page.getByRole('button', { name: 'Sign in' });
 // Scoped to <main>: Next.js adds its own hidden role="alert" route announcer.
 const formAlert = (page: Page) => page.getByRole('main').getByRole('alert');
 
@@ -34,6 +42,25 @@ async function fillCredentials(page: Page, password: string) {
   await page.goto('/login');
   await emailField(page).fill(EMAIL);
   await passwordField(page).fill(password);
+}
+
+async function sessionCookie(page: Page) {
+  const cookies = await page.context().cookies();
+  return cookies.find((cookie) => cookie.name === SESSION_COOKIE);
+}
+
+// Headers and body of every response the page receives, read as they arrive.
+function collectResponses(page: Page): Promise<string>[] {
+  const responses: Promise<string>[] = [];
+  page.on('response', (response) => responses.push(readResponse(response)));
+  return responses;
+}
+
+async function readResponse(response: PageResponse): Promise<string> {
+  const headers = JSON.stringify(await response.allHeaders());
+  // Redirects and some streamed responses have no readable body.
+  const body = await response.text().catch(() => '');
+  return `${headers}\n${body}`;
 }
 
 test.describe('sign-in page', () => {
@@ -88,35 +115,72 @@ test.describe('sign-in page', () => {
     );
   });
 
-  test('signs in, goes home and keeps the token out of Web Storage', async ({
+  test('signs in through numo-api on the server and goes home', async ({
     page,
+    numoApi,
   }) => {
-    await page.route(SIGN_IN_API, signedIn);
+    numoApi.respond(LOGIN, LOGGED_IN);
     await fillCredentials(page, PASSWORD);
 
-    await page.getByRole('button', { name: 'Sign in' }).click();
+    await signInButton(page).click();
 
     await expect(page).toHaveURL('/');
-    const webStorage = await page.evaluate(() =>
-      JSON.stringify([
-        Object.entries(localStorage),
-        Object.entries(sessionStorage),
-      ]),
+    expect(numoApi.calls).toEqual([
+      {
+        method: 'POST',
+        path: '/auth/login',
+        body: { email: EMAIL, password: PASSWORD },
+      },
+    ]);
+  });
+
+  test('keeps the session in an HttpOnly, Secure, SameSite=Lax cookie and no refresh_token cookie', async ({
+    page,
+    numoApi,
+  }) => {
+    numoApi.respond(LOGIN, LOGGED_IN);
+    await fillCredentials(page, PASSWORD);
+
+    await signInButton(page).click();
+
+    await expect(page).toHaveURL('/');
+    expect(await sessionCookie(page)).toMatchObject({
+      httpOnly: true,
+      secure: true,
+      sameSite: 'Lax',
+      path: '/',
+    });
+    const cookieNames = (await page.context().cookies()).map(
+      (cookie) => cookie.name,
     );
-    expect(webStorage).not.toContain(ACCESS_TOKEN);
+    expect(cookieNames).not.toContain('refresh_token');
+  });
+
+  test('never sends a token to the browser', async ({ page, numoApi }) => {
+    numoApi.respond(LOGIN, LOGGED_IN);
+    const responses = collectResponses(page);
+    await fillCredentials(page, PASSWORD);
+
+    await signInButton(page).click();
+
+    await expect(page).toHaveURL('/');
+    const everythingReceived = (await Promise.all(responses)).join('\n');
+    expect(everythingReceived).not.toContain(ACCESS_TOKEN);
+    expect(everythingReceived).not.toContain(REFRESH_TOKEN);
   });
 
   test('disables the button and shows "Signing in…" while sending', async ({
     page,
+    numoApi,
   }) => {
     const apiAnswer = Promise.withResolvers<void>();
-    await page.route(SIGN_IN_API, async (route) => {
+    numoApi.respond(LOGIN, async () => {
       await apiAnswer.promise;
-      await signedIn(route);
+      return LOGGED_IN;
     });
     await fillCredentials(page, PASSWORD);
 
-    await page.getByRole('button', { name: 'Sign in' }).click();
+    await signInButton(page).click();
 
     await expect(
       page.getByRole('button', { name: 'Signing in…' }),
@@ -125,45 +189,80 @@ test.describe('sign-in page', () => {
     await expect(page).toHaveURL('/');
   });
 
-  test('shows "Invalid email or password." on a 401 and keeps the email', async ({
+  test(`shows "${INVALID_CREDENTIALS}" on a 401 and keeps the email`, async ({
     page,
+    numoApi,
   }) => {
-    await page.route(SIGN_IN_API, failingWith(401));
+    numoApi.respond(LOGIN, { status: 401 });
     await fillCredentials(page, 'wrong-password');
 
     await passwordField(page).press('Enter');
 
-    await expect(formAlert(page)).toHaveText('Invalid email or password.');
+    await expect(formAlert(page)).toHaveText(INVALID_CREDENTIALS);
     await expect(formAlert(page)).toHaveCSS('background-color', LIGHT.alert);
     await expect(page).toHaveURL('/login');
     await expect(emailField(page)).toHaveValue(EMAIL);
   });
 
-  for (const { failure, respond, message } of [
+  for (const { failure, arrange, message } of [
     {
-      failure: '429',
-      respond: failingWith(429, { 'Retry-After': '42' }),
+      failure: 'a wrong password (401)',
+      arrange: (numoApi: NumoApiMock) =>
+        numoApi.respond(LOGIN, { status: 401 }),
+      message: INVALID_CREDENTIALS,
+    },
+    {
+      failure: 'a malformed email (400)',
+      arrange: (numoApi: NumoApiMock) =>
+        numoApi.respond(LOGIN, { status: 400 }),
+      message: INVALID_CREDENTIALS,
+    },
+    {
+      failure: 'the rate limit (429)',
+      arrange: (numoApi: NumoApiMock) =>
+        numoApi.respond(LOGIN, {
+          status: 429,
+          headers: { 'Retry-After': '42' },
+        }),
       message: 'Too many attempts. Try again in 42 seconds.',
     },
     {
-      failure: '500',
-      respond: failingWith(500),
-      message: 'Something went wrong. Try again.',
+      failure: 'a server error (500)',
+      arrange: (numoApi: NumoApiMock) =>
+        numoApi.respond(LOGIN, { status: 500 }),
+      message: SOMETHING_WENT_WRONG,
     },
     {
-      failure: 'network error',
-      respond: (route: Route) => route.abort(),
-      message: 'Something went wrong. Try again.',
+      failure: 'numo-api being down',
+      arrange: (numoApi: NumoApiMock) => numoApi.goDown(LOGIN),
+      message: SOMETHING_WENT_WRONG,
+    },
+    {
+      failure: 'a login without a refresh token',
+      arrange: (numoApi: NumoApiMock) =>
+        numoApi.respond(LOGIN, { ...LOGGED_IN, headers: {} }),
+      message: SOMETHING_WENT_WRONG,
     },
   ]) {
-    test(`shows "${message}" on a ${failure}`, async ({ page }) => {
-      await page.route(SIGN_IN_API, respond);
+    test(`shows "${message}" and sets no session on ${failure}`, async ({
+      page,
+      numoApi,
+    }) => {
+      arrange(numoApi);
       await fillCredentials(page, PASSWORD);
 
-      await page.getByRole('button', { name: 'Sign in' }).click();
+      await signInButton(page).click();
 
       await expect(formAlert(page)).toHaveText(message);
       await expect(page).toHaveURL('/login');
+      expect(await sessionCookie(page)).toBeUndefined();
     });
   }
+
+  test('no longer forwards /api to numo-api', async ({ page, numoApi }) => {
+    const response = await page.request.get('/api/auth/me');
+
+    expect(response.status()).toBe(404);
+    expect(numoApi.calls).toEqual([]);
+  });
 });

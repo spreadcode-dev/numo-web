@@ -39,6 +39,7 @@
     "@gluestack/ui-next-adapter": "3.0.3",
     "@legendapp/motion": "2.5.3",
     "dom-helpers": "5.2.1",
+    "jose": "^6.2.18",
     "nativewind": "4.2.7",
     "next": "^16.4.6",
     "react": "^19.3.1",

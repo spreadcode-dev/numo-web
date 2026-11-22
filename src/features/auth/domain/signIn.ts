@@ -3,7 +3,7 @@ import { type RequestFailure, requestFailureMessage } from './requestFailure';
 export type Credentials = Readonly<{ email: string; password: string }>;
 
 export type SignInResult =
-  | Readonly<{ kind: 'signedIn'; accessToken: string }>
+  | Readonly<{ kind: 'signedIn' }>
   | Readonly<{ kind: 'invalidCredentials' }>
   | RequestFailure;
 

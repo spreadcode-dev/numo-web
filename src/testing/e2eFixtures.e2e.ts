@@ -59,19 +59,8 @@ test.describe('e2e page fixture', () => {
   });
 });
 
-test.describe('e2e page fixture and the API', () => {
-  test('passes when a mocked API call fails on purpose', async ({ page }) => {
-    await openFakeAppPage(page);
-    await page.route('**/api/check', (route) => route.fulfill({ status: 500 }));
-
-    const status = await page.evaluate(
-      async () => (await fetch('/api/check')).status,
-    );
-
-    expect(status).toBe(500);
-  });
-
-  test('(expected failure) fails the test on an API call nobody mocked', async ({
+test.describe('e2e page fixture and /api', () => {
+  test('(expected failure) fails the test on any browser request to /api/', async ({
     page,
   }) => {
     test.fail();
