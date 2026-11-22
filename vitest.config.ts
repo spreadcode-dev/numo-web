@@ -6,8 +6,8 @@ const MINIMUM_COVERAGE_PERCENT = 80;
 
 // gluestack renders through react-native-web, as the Next.js build does with
 // @gluestack/ui-next-adapter: alias react-native and prefer `.web` files.
-// NativeWind's runtime only compiles inside an app bundler, so tests get a
-// stand-in (see src/testing/nativewindStub.ts).
+// NativeWind's runtime only compiles inside an app bundler, and `server-only`
+// only resolves inside Next.js, so tests get stand-ins from src/testing/.
 const reactNativeWebResolve = {
   alias: [
     { find: /^react-native$/, replacement: 'react-native-web' },
@@ -20,6 +20,12 @@ const reactNativeWebResolve = {
       find: /^nativewind$/,
       replacement: fileURLToPath(
         new URL('./src/testing/nativewindStub.ts', import.meta.url),
+      ),
+    },
+    {
+      find: /^server-only$/,
+      replacement: fileURLToPath(
+        new URL('./src/testing/serverOnlyStub.ts', import.meta.url),
       ),
     },
   ],

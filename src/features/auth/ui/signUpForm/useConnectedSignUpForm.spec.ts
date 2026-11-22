@@ -1,6 +1,6 @@
 import { act, renderHook } from '@testing-library/react';
 import type { RegisterResult } from '@/features/auth/domain/registration';
-import { register } from '@/features/auth/infrastructure/authApiClient';
+import { registerAction } from '@/features/auth/infrastructure/authActions';
 import { useConnectedSignUpForm } from './useConnectedSignUpForm';
 
 const PASSWORD = 'correct-horse-battery';
@@ -9,7 +9,7 @@ const { replace } = vi.hoisted(() => ({
   replace: vi.fn<(href: string) => void>(),
 }));
 vi.mock('next/navigation', () => ({ useRouter: () => ({ replace }) }));
-vi.mock('@/features/auth/infrastructure/authApiClient');
+vi.mock('@/features/auth/infrastructure/authActions');
 
 function renderFilledSignUpForm() {
   const { result } = renderHook(() => useConnectedSignUpForm());
@@ -23,7 +23,7 @@ function renderFilledSignUpForm() {
 
 describe('useConnectedSignUpForm', () => {
   it('should go to the sign-in page, flagged as after sign-up, once registered', async () => {
-    vi.mocked(register).mockResolvedValue({ kind: 'registered' });
+    vi.mocked(registerAction).mockResolvedValue({ kind: 'registered' });
     const result = renderFilledSignUpForm();
 
     await act(async () => result.current.submit());
@@ -39,12 +39,26 @@ describe('useConnectedSignUpForm', () => {
 
   it('should label the button "Creating account…" while sending', async () => {
     const pending = Promise.withResolvers<RegisterResult>();
-    vi.mocked(register).mockReturnValue(pending.promise);
+    vi.mocked(registerAction).mockReturnValue(pending.promise);
     const result = renderFilledSignUpForm();
 
     act(() => result.current.submit());
 
     expect(result.current.submitLabel).toBe('Creating account…');
     await act(async () => pending.resolve({ kind: 'unavailable' }));
+  });
+
+  it('should show the "Something went wrong" alert when the server can’t be reached', async () => {
+    vi.mocked(registerAction).mockRejectedValue(
+      new TypeError('Failed to fetch'),
+    );
+    const result = renderFilledSignUpForm();
+
+    await act(async () => result.current.submit());
+
+    expect(result.current.alertMessage).toBe(
+      'Something went wrong. Try again.',
+    );
+    expect(result.current.submitLabel).toBe('Create account');
   });
 });

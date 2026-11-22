@@ -1,7 +1,11 @@
 import { defineConfig, devices } from '@playwright/test';
+import { NUMO_API_MOCK_URL } from './src/testing/numoApiMock';
 
-const PORT = 3001;
+// Its own server, not `yarn dev`'s 3001: that one talks to the real numo-api.
+const PORT = 3002;
 const BASE_URL = `http://localhost:${PORT}`;
+// Next.js locks its build directory, so a second server needs its own.
+const E2E_DIST_DIR = '.next-e2e';
 const IS_CI = Boolean(process.env.CI);
 // A cold production build can take a few minutes; the dev server needs much less.
 const WEB_SERVER_TIMEOUT_MS = 5 * 60 * 1000;
@@ -20,9 +24,13 @@ export default defineConfig({
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
   webServer: {
     // CI tests the real production build; locally the dev server iterates faster.
-    command: IS_CI ? 'yarn build && yarn start' : 'yarn dev',
+    command: IS_CI
+      ? `yarn next build && yarn next start -p ${PORT}`
+      : `yarn next dev -p ${PORT}`,
     url: BASE_URL,
-    reuseExistingServer: !IS_CI,
+    // Never `yarn dev`: e2e needs a server whose numo-api is the mock.
+    reuseExistingServer: false,
+    env: { NUMO_API_URL: NUMO_API_MOCK_URL, NEXT_DIST_DIR: E2E_DIST_DIR },
     timeout: WEB_SERVER_TIMEOUT_MS,
   },
 });
