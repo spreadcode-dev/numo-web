@@ -1,9 +1,11 @@
-import type { Page, Route } from '@playwright/test';
+import type { Page } from '@playwright/test';
 import { expect, test } from '@/testing/e2eFixtures';
+import type { MockReply, NumoApiMock } from '@/testing/numoApiMock';
 
-const REGISTER_API = '**/api/auth/register';
+const REGISTER = 'POST /auth/register';
 const EMAIL = 'ana@example.com';
 const PASSWORD = 'correct-horse-battery';
+const SOMETHING_WENT_WRONG = 'Something went wrong. Try again.';
 
 // Colors from the NuMo design canvas (boards "Sign up" and "Sign in · after sign-up").
 const LIGHT = {
@@ -14,13 +16,11 @@ const LIGHT = {
 };
 const DARK = { page: 'rgb(39, 38, 37)', card: 'rgb(18, 18, 18)' };
 
-const registered = (route: Route) =>
-  route.fulfill({ status: 201, json: { id: 'user-1', email: EMAIL } });
-
-const failingWith =
-  (status: number, headers: Record<string, string> = {}) =>
-  (route: Route) =>
-    route.fulfill({ status, headers });
+// numo-api's replies, as documented in its README.
+const CREATED: MockReply = {
+  status: 201,
+  json: { id: 'user-1', email: EMAIL },
+};
 
 const emailField = (page: Page) => page.getByRole('textbox', { name: 'Email' });
 const passwordField = (page: Page) =>
@@ -92,15 +92,23 @@ test.describe('sign-up page', () => {
     await expect(page).toHaveURL('/login');
   });
 
-  test('creates the account and lands on sign-in with the banner and the email filled in', async ({
+  test('creates the account through numo-api and lands on sign-in with the banner and the email filled in', async ({
     page,
+    numoApi,
   }) => {
-    await page.route(REGISTER_API, registered);
+    numoApi.respond(REGISTER, CREATED);
     await fillSignUpForm(page);
 
     await createAccountButton(page).click();
 
     await expect(page).toHaveURL('/login?registered=1');
+    expect(numoApi.calls).toEqual([
+      {
+        method: 'POST',
+        path: '/auth/register',
+        body: { email: EMAIL, password: PASSWORD },
+      },
+    ]);
     const banner = page.getByRole('status');
     await expect(banner).toHaveText(
       'Account created. Sign in with your new email and password.',
@@ -114,11 +122,12 @@ test.describe('sign-up page', () => {
 
   test('disables the button and shows "Creating account…" while sending', async ({
     page,
+    numoApi,
   }) => {
     const apiAnswer = Promise.withResolvers<void>();
-    await page.route(REGISTER_API, async (route) => {
+    numoApi.respond(REGISTER, async () => {
       await apiAnswer.promise;
-      await registered(route);
+      return CREATED;
     });
     await fillSignUpForm(page);
 
@@ -131,12 +140,10 @@ test.describe('sign-up page', () => {
     await expect(page).toHaveURL('/login?registered=1');
   });
 
-  test('shows the field errors without calling the API', async ({ page }) => {
-    let apiCalls = 0;
-    await page.route(REGISTER_API, async (route) => {
-      apiCalls += 1;
-      await registered(route);
-    });
+  test('shows the field errors without calling numo-api', async ({
+    page,
+    numoApi,
+  }) => {
     await fillSignUpForm(page, {
       password: 'short',
       passwordConfirmation: 'shorter',
@@ -155,13 +162,30 @@ test.describe('sign-up page', () => {
       'border-top-color',
       LIGHT.fieldError,
     );
-    expect(apiCalls).toBe(0);
+    expect(numoApi.calls).toEqual([]);
+  });
+
+  test('shows numo-api’s message when it rejects the fields', async ({
+    page,
+    numoApi,
+  }) => {
+    numoApi.respond(REGISTER, {
+      status: 400,
+      json: { message: ['email must be an email'] },
+    });
+    await fillSignUpForm(page);
+
+    await createAccountButton(page).click();
+
+    await expect(formAlert(page)).toHaveText('email must be an email');
+    await expect(page).toHaveURL('/register');
   });
 
   test('offers to sign in when the email is already registered', async ({
     page,
+    numoApi,
   }) => {
-    await page.route(REGISTER_API, failingWith(409));
+    numoApi.respond(REGISTER, { status: 409 });
     await fillSignUpForm(page);
 
     await createAccountButton(page).click();
@@ -174,8 +198,11 @@ test.describe('sign-up page', () => {
     await expect(page).toHaveURL('/login');
   });
 
-  test('shows the rate-limit banner on a 429', async ({ page }) => {
-    await page.route(REGISTER_API, failingWith(429, { 'Retry-After': '42' }));
+  test('shows the rate-limit banner on a 429', async ({ page, numoApi }) => {
+    numoApi.respond(REGISTER, {
+      status: 429,
+      headers: { 'Retry-After': '42' },
+    });
     await fillSignUpForm(page);
 
     await createAccountButton(page).click();
@@ -185,4 +212,29 @@ test.describe('sign-up page', () => {
     );
     await expect(page).toHaveURL('/register');
   });
+
+  for (const { failure, arrange } of [
+    {
+      failure: 'a 500',
+      arrange: (numoApi: NumoApiMock) =>
+        numoApi.respond(REGISTER, { status: 500 }),
+    },
+    {
+      failure: 'numo-api being down',
+      arrange: (numoApi: NumoApiMock) => numoApi.goDown(REGISTER),
+    },
+  ]) {
+    test(`shows "${SOMETHING_WENT_WRONG}" on ${failure}`, async ({
+      page,
+      numoApi,
+    }) => {
+      arrange(numoApi);
+      await fillSignUpForm(page);
+
+      await createAccountButton(page).click();
+
+      await expect(formAlert(page)).toHaveText(SOMETHING_WENT_WRONG);
+      await expect(page).toHaveURL('/register');
+    });
+  }
 });

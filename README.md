@@ -31,18 +31,18 @@ yarn build && yarn start  # production build on http://localhost:3001
 
 ### Connection to numo-api
 
-The browser never calls [numo-api](https://github.com/spreadcode-dev/numo-api) directly. It calls `/api/*` on this app, and the Next.js server forwards those requests to numo-api (a rewrite in [`next.config.ts`](next.config.ts)). Both apps share one origin for the browser: there's no CORS, and the API's `SameSite=Strict` refresh cookie stays first-party.
+The browser never calls [numo-api](https://github.com/spreadcode-dev/numo-api) directly. Sign-up runs as a Server Action: the browser posts to this app, and the Next.js server calls numo-api server to server. Sign-in, for now, calls `/api/*` on this app, which the Next.js server forwards to numo-api (a rewrite in [`next.config.ts`](next.config.ts)). Either way there's no CORS, and the API's `SameSite=Strict` refresh cookie stays first-party.
 
-| Variable       | Default                 | Meaning                                                       |
-| -------------- | ----------------------- | ------------------------------------------------------------- |
-| `NUMO_API_URL` | `http://localhost:3000` | numo-api base URL that `/api/*` is forwarded to (server-only) |
+| Variable       | Default                 | Meaning                                                                   |
+| -------------- | ----------------------- | ------------------------------------------------------------------------- |
+| `NUMO_API_URL` | `http://localhost:3000` | numo-api base URL the server calls and forwards `/api/*` to (server-only) |
 
 The default fits local development, so no `.env.local` is needed (see [`.env.example`](.env.example)). `next build` bakes the rewrite into the build: rebuild after changing `NUMO_API_URL`.
 
 ### Sign up and sign in locally
 
 1. Start numo-api on port 3000 (Postgres container, migrations, `JWT_ACCESS_SECRET`; see its README).
-2. Run `yarn dev` and create an account at http://localhost:3001/register (password: 12–128 characters). You land on `/login` with an "Account created." banner and your email filled in; you're not signed in automatically.
+2. Run `yarn dev` and create an account at http://localhost:3001/register (password: 12–128 characters). You land on `/login` with an "Account created." banner and your email filled in; you're not signed in automatically. DevTools → Network shows the sign-up as `POST /register` (a Server Action), not a call to `/api/auth/register`.
 
    Or create a test user with the API's `curl` example:
 
@@ -85,12 +85,12 @@ The coverage gate (80% of lines, branches, functions and statements) is set in [
 [Playwright](https://playwright.dev/) specs live next to the route they test as `*.e2e.ts` (Vitest only runs `*.spec.ts(x)`, so the suites never overlap).
 
 ```bash
-yarn test:e2e          # reuses a running `yarn dev` on :3001, or starts one
+yarn test:e2e          # starts its own server on :3002 (dev mode), even while `yarn dev` runs
 CI=true yarn test:e2e  # builds and serves the production build, as CI will
 ```
 
 - Any browser console error or uncaught page error fails the test (see [`src/testing/e2eFixtures.ts`](src/testing/e2eFixtures.ts)). The only exception is Chromium's "Failed to load resource" line for a mocked `/api/*` error response (a `401` the app handles, for example).
-- The tests never need a running `numo-api`: mock its calls with `page.route('**/api/…', …)`. A call to `/api/*` that no test mocked is aborted and fails the test.
+- The tests never need a running `numo-api`. The e2e server's `NUMO_API_URL` points at an in-process mock (`numoApi` fixture, port 3998, [`src/testing/numoApiMock.ts`](src/testing/numoApiMock.ts)): each test scripts its replies with `numoApi.respond(…)` / `numoApi.goDown(…)` and checks what it received in `numoApi.calls`. Browser calls to `/api/*` (sign-in, for now) are mocked with `page.route('**/api/…', …)`. Any call nobody mocked fails the test.
 - On failure, open the HTML report with `yarn playwright show-report` (`playwright-report/`; traces in `test-results/`).
 
 ## Branch flow (GitFlow)

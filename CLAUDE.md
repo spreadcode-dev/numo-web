@@ -16,7 +16,7 @@ Next.js 16 (App Router, TypeScript, **ESM**) web app for NuMo. Local-only for no
 
 - **Yarn 4 only** (Corepack, `packageManager`); never npm, never commit `package-lock.json`.
 - Node 26 (`.nvmrc`). Corepack must be installed separately (`npm install -g corepack`).
-- Dev server runs on port **3001** (`numo-api` owns 3000).
+- Dev server runs on port **3001** (`numo-api` owns 3000); `yarn test:e2e` starts its own on **3002**.
 - Before handing work over: `yarn format:check && yarn lint && yarn typecheck && yarn test:cov && yarn build && yarn test:e2e` must pass (80% coverage).
 - Never bypass the pre-commit hook (`--no-verify`).
 - Next.js 16 may differ from what you remember: check the docs bundled in `node_modules/next/dist/docs/` before using an API, and heed deprecation notices.
@@ -27,7 +27,7 @@ Next.js 16 (App Router, TypeScript, **ESM**) web app for NuMo. Local-only for no
 - Features live in `src/features/<feature>/` (mirroring `numo-api` modules), with only the layers they need:
   - `domain/`: types and pure business rules (no React, no Next, no fetch).
   - `application/`: use cases / orchestration hooks depending on ports.
-  - `infrastructure/`: `numo-api` clients and DTO → domain mapping. Clients call same-origin `/api/...` paths; `next.config.ts` rewrites them to `NUMO_API_URL` (server-only env, default `http://localhost:3000`). Never call the API's own origin from the browser.
+  - `infrastructure/`: `numo-api` clients and DTO → domain mapping. Clients are **server-only** (`import 'server-only'`) and call `NUMO_API_URL` (server-only env, default `http://localhost:3000`) server to server; the browser reaches them through Server Actions (`'use server'`, e.g. `authActions.ts`). Never call `numo-api` from the browser. Sign-in still goes through the `/api/...` rewrite in `next.config.ts` until it moves server-side too.
   - `ui/`: components.
 - Dependency rule: `ui`/`infrastructure` → `application` → `domain`.
 - `src/shared/` only for code a **second** feature actually needs. No empty folders or abstractions "for later".
@@ -52,7 +52,7 @@ Next.js 16 (App Router, TypeScript, **ESM**) web app for NuMo. Local-only for no
   - `tsconfig.json` sets `jsxImportSource: nativewind`, so `className` styles React Native components.
   - `src/app/registry.tsx` flushes react-native-web styles during SSR, and the root layout wraps the app in it and in `ThemeModeProvider` (which renders `GluestackUIProvider`; see "Theme and brand").
   - Tailwind/PostCSS configs are `.cjs` because the repo is ESM.
-- Vitest (`unit` project) aliases `react-native` → `react-native-web`, resolves `.web.*` files first, and swaps `nativewind` for [`src/testing/nativewindStub.ts`](src/testing/nativewindStub.ts) with React's own JSX runtime. NativeWind's runtime only compiles inside an app bundler. Unit tests check structure and roles; styling is checked by Playwright.
+- Vitest (`unit` project) aliases `react-native` → `react-native-web`, resolves `.web.*` files first, and swaps `nativewind` for [`src/testing/nativewindStub.ts`](src/testing/nativewindStub.ts) with React's own JSX runtime. It also swaps `server-only` for an empty [`src/testing/serverOnlyStub.ts`](src/testing/serverOnlyStub.ts) (Next.js resolves it itself). NativeWind's runtime only compiles inside an app bundler. Unit tests check structure and roles; styling is checked by Playwright.
   - `react-native-safe-area-context` is aliased to its ES-module build: its CommonJS build `require`s `react-native` through Node, past Vite's alias. Another React Native package failing with `Cannot find module 'react-native'` needs the same fix.
 - Form-field quirks (see `LabeledInput` in `src/features/auth/ui/signInForm/`):
   - every `FormControl` gets the same generated id and every `InputField` the aria-label "Input Field", so pass `id` and `aria-label` explicitly;
@@ -84,7 +84,8 @@ Next.js 16 (App Router, TypeScript, **ESM**) web app for NuMo. Local-only for no
 - Domain: pure unit tests. Hooks/use cases: fake clients. Components: Testing Library. User flows: Playwright.
 - E2E: Playwright (Chromium), specs next to the route as `*.e2e.ts` (e.g. `src/app/page.e2e.ts`). Browsers: `yarn playwright install chromium`.
   - Import `test`/`expect` from `@/testing/e2eFixtures`, never from `@playwright/test`: its `page` fixture fails the test on any browser console error or uncaught page error.
-  - Never call the real `numo-api`: mock requests with `page.route('**/api/…')`. The fixture aborts any unmocked `/api/*` call and fails the test, and it ignores Chromium's "Failed to load resource" console line only for mocked `/api/*` error responses. No fixed `waitForTimeout`; rely on auto-waiting assertions.
+  - Never call the real `numo-api`. Server-side calls (Server Actions) go to the `numoApi` fixture, an in-process mock `numo-api` on port 3998 ([`src/testing/numoApiMock.ts`](src/testing/numoApiMock.ts)): `numoApi.respond('POST /auth/register', reply)`, `numoApi.goDown(route)`, and `numoApi.calls` to assert what it received. An unmocked call answers `500` and fails the test with its method and path.
+  - Browser calls to `/api/*` (sign-in, for now) are mocked with `page.route('**/api/…')`. The fixture aborts any unmocked `/api/*` call and fails the test, and it ignores Chromium's "Failed to load resource" console line only for mocked `/api/*` error responses. No fixed `waitForTimeout`; rely on auto-waiting assertions.
   - Query the app's alerts inside `<main>` (`page.getByRole('main').getByRole('alert')`): Next.js adds its own hidden `role="alert"` route announcer.
-  - `yarn test:e2e` reuses a running `yarn dev` (or starts one); `CI=true yarn test:e2e` builds and serves the production build.
+  - `yarn test:e2e` starts its own Next.js server on 3002 with `NUMO_API_URL` pointing at the mock and its own build directory (`NEXT_DIST_DIR=.next-e2e`, since Next.js locks `.next` while `yarn dev` runs), so it never reuses `yarn dev`. `CI=true yarn test:e2e` builds and serves the production build.
 - Every new function gets a test; every bug fix gets a regression test.

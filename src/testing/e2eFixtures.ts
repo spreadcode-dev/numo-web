@@ -4,12 +4,40 @@ import {
   expect,
   type Page,
 } from '@playwright/test';
+import { NumoApiMock } from './numoApiMock';
 
-// The app reaches numo-api through its /api proxy; tests mock every such call.
+// Sign-in still reaches numo-api from the browser through the /api proxy;
+// tests mock every such call.
 const API_ROUTE = '**/api/**';
 const API_URL = /^https?:\/\/[^/]+\/api\//;
 
-export const test = base.extend({
+type TestFixtures = { numoApiCheck: void };
+type WorkerFixtures = { numoApi: NumoApiMock };
+
+export const test = base.extend<TestFixtures, WorkerFixtures>({
+  numoApi: [
+    // Playwright reads a fixture's dependencies from its first parameter, so
+    // it must stay an object pattern even when there are none.
+    // oxlint-disable-next-line no-empty-pattern
+    async ({}, use) => {
+      const numoApi = new NumoApiMock();
+      await numoApi.start();
+      await use(numoApi);
+      await numoApi.stop();
+    },
+    { scope: 'worker' },
+  ],
+  numoApiCheck: [
+    async ({ numoApi }, use) => {
+      numoApi.reset();
+      await use();
+      expect(
+        numoApi.unmockedCalls,
+        'numo-api calls without a numoApi mock',
+      ).toEqual([]);
+    },
+    { auto: true },
+  ],
   page: async ({ page }, use) => {
     const browserErrors = collectBrowserErrors(page);
     const unmockedApiCalls = await rejectUnmockedApiCalls(page);
