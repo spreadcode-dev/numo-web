@@ -7,7 +7,7 @@ import {
 import { UNAVAILABLE } from '@/features/auth/infrastructure/apiResponses';
 import { signInAction } from '@/features/auth/infrastructure/authActions';
 
-const HOME_PATH = '/';
+const APP_PATH = '/app';
 
 // A Server Action call rejects when the Next.js server can't be reached,
 // while the form expects `signIn` to always resolve with a result.
@@ -18,7 +18,7 @@ export function useConnectedSignInForm() {
   const router = useRouter();
   const form = useSignInForm({
     signIn: signInOnServer,
-    onSignedIn: () => router.replace(HOME_PATH),
+    onSignedIn: () => router.replace(APP_PATH),
     initialEmail: readRegisteredEmail(),
   });
 

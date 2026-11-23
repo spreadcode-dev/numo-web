@@ -1,6 +1,11 @@
 import 'server-only';
 import type { RegisterResult } from '@/features/auth/domain/registration';
-import { type Session, startSession } from '@/features/auth/domain/session';
+import type { CurrentUser } from '@/features/auth/domain/currentUser';
+import {
+  type RefreshOutcome,
+  type Session,
+  startSession,
+} from '@/features/auth/domain/session';
 import type { Credentials, SignInFailure } from '@/features/auth/domain/signIn';
 import {
   HTTP_BAD_REQUEST,
@@ -13,11 +18,19 @@ import {
   rateLimited,
   UNAVAILABLE,
 } from './apiResponses';
-import { readRefreshToken } from './refreshTokenCookie';
+import {
+  readRefreshToken,
+  refreshTokenCookieHeader,
+} from './refreshTokenCookie';
 
 const DEFAULT_NUMO_API_URL = 'http://localhost:3000';
 const REGISTER_PATH = '/auth/register';
 const LOGIN_PATH = '/auth/login';
+const REFRESH_PATH = '/auth/refresh';
+const CURRENT_USER_PATH = '/auth/me';
+
+const SESSION_ENDED: RefreshOutcome = { kind: 'sessionEnded' };
+const REFRESH_UNAVAILABLE: RefreshOutcome = { kind: 'unavailable' };
 
 // Stays on the server: the Server Action stores the session in a cookie and
 // tells the browser only that it signed in.
@@ -111,12 +124,21 @@ async function toSignInOutcome(response: Response): Promise<SignInOutcome> {
 }
 
 async function readSession(response: Response): Promise<SignInOutcome> {
+  const session = await readIssuedSession(response);
+  return session === undefined ? UNAVAILABLE : { kind: 'signedIn', session };
+}
+
+// Login and refresh answer alike: the access token in the body, the refresh
+// token in a cookie.
+async function readIssuedSession(
+  response: Response,
+): Promise<Session | undefined> {
   const accessToken = readAccessToken(await response.json());
   const refreshToken = readRefreshToken(response.headers.getSetCookie());
   if (accessToken === undefined || refreshToken === undefined) {
-    return UNAVAILABLE;
+    return undefined;
   }
-  const session = startSession(
+  return startSession(
     {
       accessToken: accessToken.value,
       expiresInSeconds: accessToken.expiresInSeconds,
@@ -125,7 +147,6 @@ async function readSession(response: Response): Promise<SignInOutcome> {
     },
     new Date(),
   );
-  return { kind: 'signedIn', session };
 }
 
 function readAccessToken(body: unknown): IssuedAccessToken | undefined {
@@ -143,4 +164,62 @@ function readAccessToken(body: unknown): IssuedAccessToken | undefined {
     expiresIn > 0
     ? { value: accessToken, expiresInSeconds: expiresIn }
     : undefined;
+}
+
+// The refresh token goes back as the cookie numo-api set: its route is
+// authenticated by that cookie, not by a header.
+export async function refreshSession(
+  refreshToken: string,
+): Promise<RefreshOutcome> {
+  try {
+    const response = await fetch(numoApiUrl(REFRESH_PATH), {
+      method: 'POST',
+      headers: { Cookie: refreshTokenCookieHeader(refreshToken) },
+    });
+    return await toRefreshOutcome(response);
+  } catch {
+    return REFRESH_UNAVAILABLE;
+  }
+}
+
+async function toRefreshOutcome(response: Response): Promise<RefreshOutcome> {
+  switch (response.status) {
+    case HTTP_OK:
+      return readRefreshedSession(response);
+    case HTTP_UNAUTHORIZED:
+      return SESSION_ENDED;
+    default:
+      return REFRESH_UNAVAILABLE;
+  }
+}
+
+async function readRefreshedSession(
+  response: Response,
+): Promise<RefreshOutcome> {
+  const session = await readIssuedSession(response);
+  return session === undefined
+    ? REFRESH_UNAVAILABLE
+    : { kind: 'refreshed', session };
+}
+
+export async function fetchCurrentUser(
+  accessToken: string,
+): Promise<CurrentUser | undefined> {
+  try {
+    const response = await fetch(numoApiUrl(CURRENT_USER_PATH), {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    return response.status === HTTP_OK
+      ? readCurrentUser(await response.json())
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function readCurrentUser(body: unknown): CurrentUser | undefined {
+  if (typeof body !== 'object' || body === null || !('email' in body)) {
+    return undefined;
+  }
+  return typeof body.email === 'string' ? { email: body.email } : undefined;
 }

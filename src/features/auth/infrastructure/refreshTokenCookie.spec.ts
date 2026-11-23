@@ -1,4 +1,7 @@
-import { readRefreshToken } from './refreshTokenCookie';
+import {
+  readRefreshToken,
+  refreshTokenCookieHeader,
+} from './refreshTokenCookie';
 
 const EXPIRES = 'Tue, 22 Dec 2026 12:00:00 GMT';
 // As numo-api (Express) writes it.
@@ -37,5 +40,13 @@ describe('readRefreshToken', () => {
     },
   ])('should find no refresh token with $case', ({ setCookie }) => {
     expect(readRefreshToken(setCookie)).toBeUndefined();
+  });
+});
+
+describe('refreshTokenCookieHeader', () => {
+  it('should name the value refresh_token, as numo-api expects', () => {
+    expect(refreshTokenCookieHeader('refresh-123')).toBe(
+      'refresh_token=refresh-123',
+    );
   });
 });

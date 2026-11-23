@@ -1,12 +1,15 @@
 import type { ReactNode } from 'react';
+import { getCurrentUser } from '@/features/auth/infrastructure/currentSession';
 import { Topbar } from '@/features/shell/ui/topbar/Topbar';
 
-export default function ShellLayout({
+export default async function ShellLayout({
   children,
 }: Readonly<{ children: ReactNode }>) {
+  const user = await getCurrentUser();
+
   return (
     <>
-      <Topbar />
+      <Topbar email={user?.email} />
       {children}
     </>
   );

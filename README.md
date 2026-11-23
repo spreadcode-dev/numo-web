@@ -55,11 +55,33 @@ After sign-in, the server keeps both tokens in one cookie, `numo_session`: encry
    # → 201 {"id":"…","email":"ana@example.com",…}
    ```
 
-3. Sign in at http://localhost:3001/login. You land on `/`. DevTools → Application → Cookies → `http://localhost:3001` shows `numo_session` (HttpOnly, Secure, `SameSite=Lax`) and no `refresh_token`. DevTools → Network shows the sign-in as `POST /login` (a Server Action) and no request to `/api/...`.
+3. Sign in at http://localhost:3001/login. You land on `/app`, with your email in the top bar. DevTools → Application → Cookies → `http://localhost:3001` shows `numo_session` (HttpOnly, Secure, `SameSite=Lax`) and no `refresh_token`. DevTools → Network shows the sign-in as `POST /login` (a Server Action) and no request to `/api/...`.
 
 Use **Chromium (Chrome, Edge) or Firefox** locally: the session cookie is `Secure`, and Safari rejects `Secure` cookies on `http://localhost`.
 
 The login and register routes each allow 5 attempts per minute per IP; the 6th shows "Too many attempts. Try again in N seconds." The Next.js server makes both calls, so numo-api sees every browser as the same client, and locally that budget is shared.
+
+### Protected area and session refresh
+
+`/app` needs a signed-in user. Its page checks the session on the server (`requireSession()` in [`currentSession.ts`](src/features/auth/infrastructure/currentSession.ts)): with no `numo_session`, a forged one, or an expired access token, the server answers with a redirect to `/login` and sends none of the page. The top bar shows the signed-in user's email, which the server reads from numo-api's `GET /auth/me`.
+
+numo-api's access token lives 15 minutes, so [`src/proxy.ts`](src/proxy.ts) (Next.js 16's renamed middleware, matcher `/app/:path*`) renews it before each `/app` request that needs it:
+
+- More than 60 s left: nothing happens, and numo-api isn't called.
+- 60 s or less: the server calls `POST /auth/refresh` with the stored refresh token and saves the rotated tokens in `numo_session`, on the response and on the request, so that very page already uses them.
+- numo-api answers `401` (refresh token expired, revoked or reused): `numo_session` is deleted and the browser goes to `/login`.
+- numo-api is unreachable: the request goes on unchanged, and the next one tries again.
+
+numo-api ends **every** session from a login when a rotated refresh token is presented again, and one page load can send several requests with the same cookie (prefetches, two tabs). So each refresh token is refreshed **once**: requests that arrive with the same token share that refresh and, for 30 s, its result ([`refreshSingleFlight.ts`](src/features/auth/application/refreshSingleFlight.ts)). That memory lives in the Next.js server process, which is correct for the single local instance. Several web server instances would need a shared store (e.g. Redis) first.
+
+To watch a refresh locally, shorten numo-api's access token and restart it:
+
+```bash
+# numo-api/.env
+JWT_ACCESS_TTL=2m
+```
+
+Sign in, open http://localhost:3001/app, note the `numo_session` value (DevTools → Application → Cookies), wait 3 minutes and reload: you're still signed in, the value has changed, and numo-api's log shows one `POST /auth/refresh`.
 
 ## Scripts
 

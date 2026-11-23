@@ -1,4 +1,9 @@
-import { register, signIn } from './authServerClient';
+import {
+  register,
+  signIn,
+  fetchCurrentUser,
+  refreshSession,
+} from './authServerClient';
 
 const CREDENTIALS = {
   email: 'ana@example.com',
@@ -253,5 +258,115 @@ describe('signIn', () => {
     );
 
     await expect(signIn(CREDENTIALS)).resolves.toEqual({ kind: 'unavailable' });
+  });
+});
+
+describe('refreshSession', () => {
+  it('should post the refresh token as numo-api’s cookie to its refresh route', async () => {
+    vi.stubEnv('NUMO_API_URL', 'http://numo-api.test');
+    const fetchMock = stubFetch(loggedIn());
+
+    await refreshSession('refresh-123');
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://numo-api.test/auth/refresh',
+      { method: 'POST', headers: { Cookie: 'refresh_token=refresh-123' } },
+    );
+  });
+
+  it('should start a new session from the rotated tokens on 200', async () => {
+    vi.useFakeTimers({ now: NOW, toFake: ['Date'] });
+    stubFetch(loggedIn());
+
+    await expect(refreshSession('old-refresh')).resolves.toEqual({
+      kind: 'refreshed',
+      session: {
+        accessToken: 'access-123',
+        accessTokenExpiresAt: new Date('2026-11-22T12:15:00.000Z'),
+        refreshToken: 'refresh-123',
+        refreshTokenExpiresAt: new Date(REFRESH_TOKEN_EXPIRES),
+      },
+    });
+  });
+
+  it('should report the session ended on 401', async () => {
+    stubFetch(new Response(undefined, { status: 401 }));
+
+    await expect(refreshSession('old-refresh')).resolves.toEqual({
+      kind: 'sessionEnded',
+    });
+  });
+
+  it('should report unavailable when a 200 sets no refresh token cookie', async () => {
+    stubFetch(loggedIn(LOGIN_BODY, []));
+
+    await expect(refreshSession('old-refresh')).resolves.toEqual({
+      kind: 'unavailable',
+    });
+  });
+
+  it('should report unavailable on a server error', async () => {
+    stubFetch(new Response(undefined, { status: 500 }));
+
+    await expect(refreshSession('old-refresh')).resolves.toEqual({
+      kind: 'unavailable',
+    });
+  });
+
+  it('should report unavailable when numo-api is unreachable', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn<typeof fetch>().mockRejectedValue(new TypeError('fetch failed')),
+    );
+
+    await expect(refreshSession('old-refresh')).resolves.toEqual({
+      kind: 'unavailable',
+    });
+  });
+});
+
+describe('fetchCurrentUser', () => {
+  it('should ask numo-api who the access token belongs to', async () => {
+    vi.stubEnv('NUMO_API_URL', 'http://numo-api.test');
+    const fetchMock = stubFetch(Response.json({ email: 'ana@example.com' }));
+
+    await fetchCurrentUser('access-123');
+
+    expect(fetchMock).toHaveBeenCalledWith('http://numo-api.test/auth/me', {
+      headers: { Authorization: 'Bearer access-123' },
+    });
+  });
+
+  it('should keep only the email on 200', async () => {
+    stubFetch(Response.json({ id: 'user-1', email: 'ana@example.com' }));
+
+    await expect(fetchCurrentUser('access-123')).resolves.toEqual({
+      email: 'ana@example.com',
+    });
+  });
+
+  it.each([
+    { case: 'a 401', response: () => new Response(undefined, { status: 401 }) },
+    {
+      case: 'a body without email',
+      response: () => Response.json({ id: 'user-1' }),
+    },
+    {
+      case: 'a non-string email',
+      response: () => Response.json({ email: 42 }),
+    },
+  ])('should return undefined on $case', async ({ response }) => {
+    stubFetch(response());
+
+    await expect(fetchCurrentUser('access-123')).resolves.toBeUndefined();
+  });
+
+  it('should return undefined when numo-api is unreachable', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn<typeof fetch>().mockRejectedValue(new TypeError('fetch failed')),
+    );
+
+    await expect(fetchCurrentUser('access-123')).resolves.toBeUndefined();
   });
 });

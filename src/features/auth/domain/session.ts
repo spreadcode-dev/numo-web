@@ -1,3 +1,6 @@
+// Refreshing this early means a request never starts with a token that
+// expires halfway through it.
+const REFRESH_MARGIN_SECONDS = 60;
 const MILLISECONDS_PER_SECOND = 1000;
 
 export type Session = Readonly<{
@@ -26,3 +29,20 @@ export function startSession(tokens: IssuedTokens, now: Date): Session {
     refreshTokenExpiresAt: tokens.refreshTokenExpiresAt,
   };
 }
+
+export function isAccessTokenExpired(session: Session, now: Date): boolean {
+  return session.accessTokenExpiresAt.getTime() <= now.getTime();
+}
+
+export function needsRefresh(session: Session, now: Date): boolean {
+  const refreshFrom =
+    session.accessTokenExpiresAt.getTime() -
+    REFRESH_MARGIN_SECONDS * MILLISECONDS_PER_SECOND;
+  return refreshFrom <= now.getTime();
+}
+
+export type RefreshOutcome =
+  | Readonly<{ kind: 'refreshed'; session: Session }>
+  // numo-api refused the refresh token: expired, revoked or reused.
+  | Readonly<{ kind: 'sessionEnded' }>
+  | Readonly<{ kind: 'unavailable' }>;
