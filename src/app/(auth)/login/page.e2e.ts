@@ -3,6 +3,7 @@ import { expect, test } from '@/testing/e2eFixtures';
 import type { MockReply, NumoApiMock } from '@/testing/numoApiMock';
 
 const LOGIN = 'POST /auth/login';
+const CURRENT_USER = 'GET /auth/me';
 const SESSION_COOKIE = 'numo_session';
 const EMAIL = 'ana@example.com';
 const PASSWORD = 'correct-horse-battery';
@@ -28,6 +29,12 @@ const LOGGED_IN: MockReply = {
   headers: {
     'Set-Cookie': `refresh_token=${REFRESH_TOKEN}; Path=/auth; Expires=${new Date(Date.now() + REFRESH_TOKEN_LIFETIME_MS).toUTCString()}; HttpOnly; Secure; SameSite=Strict`,
   },
+};
+
+// The top bar on /app asks numo-api who is signed in.
+const KNOWN_USER: MockReply = {
+  status: 200,
+  json: { id: 'user-1', email: EMAIL },
 };
 
 const emailField = (page: Page) => page.getByRole('textbox', { name: 'Email' });
@@ -115,23 +122,26 @@ test.describe('sign-in page', () => {
     );
   });
 
-  test('signs in through numo-api on the server and goes home', async ({
+  test('signs in through numo-api on the server and opens the app', async ({
     page,
     numoApi,
   }) => {
     numoApi.respond(LOGIN, LOGGED_IN);
+    numoApi.respond(CURRENT_USER, KNOWN_USER);
     await fillCredentials(page, PASSWORD);
 
     await signInButton(page).click();
 
-    await expect(page).toHaveURL('/');
-    expect(numoApi.calls).toEqual([
-      {
-        method: 'POST',
-        path: '/auth/login',
-        body: { email: EMAIL, password: PASSWORD },
-      },
-    ]);
+    await expect(page).toHaveURL('/app');
+    expect(numoApi.calls.filter((call) => call.path === '/auth/login')).toEqual(
+      [
+        {
+          method: 'POST',
+          path: '/auth/login',
+          body: { email: EMAIL, password: PASSWORD },
+        },
+      ],
+    );
   });
 
   test('keeps the session in an HttpOnly, Secure, SameSite=Lax cookie and no refresh_token cookie', async ({
@@ -139,11 +149,12 @@ test.describe('sign-in page', () => {
     numoApi,
   }) => {
     numoApi.respond(LOGIN, LOGGED_IN);
+    numoApi.respond(CURRENT_USER, KNOWN_USER);
     await fillCredentials(page, PASSWORD);
 
     await signInButton(page).click();
 
-    await expect(page).toHaveURL('/');
+    await expect(page).toHaveURL('/app');
     expect(await sessionCookie(page)).toMatchObject({
       httpOnly: true,
       secure: true,
@@ -158,12 +169,13 @@ test.describe('sign-in page', () => {
 
   test('never sends a token to the browser', async ({ page, numoApi }) => {
     numoApi.respond(LOGIN, LOGGED_IN);
+    numoApi.respond(CURRENT_USER, KNOWN_USER);
     const responses = collectResponses(page);
     await fillCredentials(page, PASSWORD);
 
     await signInButton(page).click();
 
-    await expect(page).toHaveURL('/');
+    await expect(page).toHaveURL('/app');
     const everythingReceived = (await Promise.all(responses)).join('\n');
     expect(everythingReceived).not.toContain(ACCESS_TOKEN);
     expect(everythingReceived).not.toContain(REFRESH_TOKEN);
@@ -178,6 +190,7 @@ test.describe('sign-in page', () => {
       await apiAnswer.promise;
       return LOGGED_IN;
     });
+    numoApi.respond(CURRENT_USER, KNOWN_USER);
     await fillCredentials(page, PASSWORD);
 
     await signInButton(page).click();
@@ -186,7 +199,7 @@ test.describe('sign-in page', () => {
       page.getByRole('button', { name: 'Signing in…' }),
     ).toBeDisabled();
     apiAnswer.resolve();
-    await expect(page).toHaveURL('/');
+    await expect(page).toHaveURL('/app');
   });
 
   test(`shows "${INVALID_CREDENTIALS}" on a 401 and keeps the email`, async ({

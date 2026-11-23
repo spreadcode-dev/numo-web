@@ -31,6 +31,7 @@ Next.js 16 (App Router, TypeScript, **ESM**) web app for NuMo. Local-only for no
   - `ui/`: components.
 - Dependency rule: `ui`/`infrastructure` → `application` → `domain`.
 - **Session:** after sign-in, numo-api's tokens live only in the `numo_session` cookie (`auth/infrastructure/sessionCookie.ts`): JWE `dir` + `A256GCM` under `SESSION_SECRET` (server-only, ≥ 32 bytes, checked on use), HttpOnly, Secure, `SameSite=Lax`. A Server Action's return value reaches the browser, so it never carries a token, and numo-api's `refresh_token` cookie is never forwarded. Specs that use `jose` run in Node (`// @vitest-environment node`): under jsdom it rejects Node's `Buffer` keys.
+- **Protected pages** live in `src/app/(shell)/(protected)/` and start with `await requireSession()` (`auth/infrastructure/currentSession.ts`), in the page, not a layout (layouts don't re-render on client navigation). UI that only adapts to the user calls `getCurrentUser()`, which never redirects. `src/proxy.ts` refreshes the session before those pages render (Server Components can't set cookies); add a new protected path to its `matcher`. Refreshes go through the in-memory `refreshSingleFlight`, never straight to `refreshSession`: numo-api ends the whole login when a refresh token is reused.
 - `src/shared/` only for code a **second** feature actually needs. No empty folders or abstractions "for later".
 - Import across folders with the `@/*` alias (`@/features/accounts/domain/money`).
 

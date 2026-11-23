@@ -31,3 +31,8 @@ function readExpires(attributes: readonly string[]): Date | undefined {
   const expiresAt = new Date(expires.slice(EXPIRES_ATTRIBUTE.length + 1));
   return Number.isNaN(expiresAt.getTime()) ? undefined : expiresAt;
 }
+
+// Sent back to numo-api exactly as it issued it.
+export function refreshTokenCookieHeader(value: string): string {
+  return `${REFRESH_TOKEN_COOKIE}=${value}`;
+}

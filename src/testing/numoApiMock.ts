@@ -13,10 +13,14 @@ export type MockReply = Readonly<{
   headers?: Record<string, string>;
 }>;
 
+// `cookie` and `authorization` are undefined when the request didn't send
+// them, so `toEqual` still matches calls listed without them.
 export type ReceivedCall = Readonly<{
   method: string;
   path: string;
   body: unknown;
+  cookie?: string;
+  authorization?: string;
 }>;
 
 type Responder = MockReply | (() => Promise<MockReply>);
@@ -103,6 +107,8 @@ async function readCall(request: IncomingMessage): Promise<ReceivedCall> {
     method: request.method ?? '',
     path: request.url ?? '',
     body: text === '' ? undefined : JSON.parse(text),
+    cookie: request.headers.cookie,
+    authorization: request.headers.authorization,
   };
 }
 

@@ -6,6 +6,8 @@ import {
   encryptSession,
   SESSION_COOKIE,
   saveSession,
+  readSession,
+  sessionCookieOptions,
 } from './sessionCookie';
 
 type CookieStore = Awaited<ReturnType<typeof cookies>>;
@@ -111,5 +113,48 @@ describe('saveSession', () => {
       path: '/',
       expires: SESSION.refreshTokenExpiresAt,
     });
+  });
+});
+
+describe('sessionCookieOptions', () => {
+  it('should keep the session cookie flags and expire with the refresh token', () => {
+    expect(sessionCookieOptions(SESSION)).toEqual({
+      httpOnly: true,
+      secure: true,
+      sameSite: 'lax',
+      path: '/',
+      expires: SESSION.refreshTokenExpiresAt,
+    });
+  });
+});
+
+describe('readSession', () => {
+  function stubSessionCookie(value: string | undefined) {
+    const get = vi
+      .fn<CookieStore['get']>()
+      .mockReturnValue(
+        value === undefined ? undefined : { name: SESSION_COOKIE, value },
+      );
+    vi.mocked(cookies).mockResolvedValue({ get } as unknown as CookieStore);
+    return get;
+  }
+
+  it('should read the session from the numo_session cookie', async () => {
+    const get = stubSessionCookie(await encryptSession(SESSION));
+
+    await expect(readSession()).resolves.toEqual(SESSION);
+    expect(get).toHaveBeenCalledWith(SESSION_COOKIE);
+  });
+
+  it('should find no session without the cookie', async () => {
+    stubSessionCookie(undefined);
+
+    await expect(readSession()).resolves.toBeUndefined();
+  });
+
+  it('should find no session in a tampered cookie', async () => {
+    stubSessionCookie(tamper(await encryptSession(SESSION)));
+
+    await expect(readSession()).resolves.toBeUndefined();
   });
 });

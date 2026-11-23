@@ -19,13 +19,13 @@ describe('useConnectedSignInForm', () => {
     expect(result.current.email).toBe('ana@example.com');
   });
 
-  it('should go to the home page after signing in', async () => {
+  it('should go to the protected area after signing in', async () => {
     vi.mocked(signInAction).mockResolvedValue({ kind: 'signedIn' });
     const { result } = renderHook(() => useConnectedSignInForm());
 
     await act(async () => result.current.submit());
 
-    expect(replace).toHaveBeenCalledWith('/');
+    expect(replace).toHaveBeenCalledWith('/app');
   });
 
   it('should label the button "Sign in" until it is pressed', () => {

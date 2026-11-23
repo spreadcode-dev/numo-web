@@ -20,6 +20,9 @@ const SESSION_COOKIE_OPTIONS = {
   path: '/',
 } as const;
 
+type SessionCookieOptions = typeof SESSION_COOKIE_OPTIONS &
+  Readonly<{ expires: Date }>;
+
 // Dates as epoch milliseconds: the encrypted payload is JSON.
 type SessionClaims = Readonly<{
   accessToken: string;
@@ -30,10 +33,23 @@ type SessionClaims = Readonly<{
 
 export async function saveSession(session: Session): Promise<void> {
   const cookieStore = await cookies();
-  cookieStore.set(SESSION_COOKIE, await encryptSession(session), {
-    ...SESSION_COOKIE_OPTIONS,
-    expires: session.refreshTokenExpiresAt,
-  });
+  cookieStore.set(
+    SESSION_COOKIE,
+    await encryptSession(session),
+    sessionCookieOptions(session),
+  );
+}
+
+// The cookie lives as long as the refresh token: after that no request can
+// renew the session anyway.
+export function sessionCookieOptions(session: Session): SessionCookieOptions {
+  return { ...SESSION_COOKIE_OPTIONS, expires: session.refreshTokenExpiresAt };
+}
+
+export async function readSession(): Promise<Session | undefined> {
+  const cookieStore = await cookies();
+  const token = cookieStore.get(SESSION_COOKIE)?.value;
+  return token === undefined ? undefined : decryptSession(token);
 }
 
 export async function encryptSession(session: Session): Promise<string> {
