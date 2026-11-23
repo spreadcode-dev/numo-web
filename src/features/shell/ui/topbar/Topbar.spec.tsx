@@ -7,7 +7,10 @@ function renderTopbar(email?: string) {
     <ThemeModeContext
       value={{ theme: 'light', toggleTheme: vi.fn<() => void>() }}
     >
-      <Topbar email={email} />
+      <Topbar
+        email={email}
+        onSignOut={vi.fn<() => Promise<void>>().mockResolvedValue()}
+      />
     </ThemeModeContext>,
   );
   return within(screen.getByRole('banner'));
@@ -23,13 +26,15 @@ describe('Topbar', () => {
     ).toBeInTheDocument();
   });
 
-  it('should show the signed-in user’s email', () => {
+  it('should show the signed-in user’s menu, named by their email', () => {
     const banner = renderTopbar('ana@example.com');
 
-    expect(banner.getByText('ana@example.com')).toBeVisible();
+    expect(
+      banner.getByRole('button', { name: 'ana@example.com' }),
+    ).toBeVisible();
   });
 
-  it('should show no email when signed out', () => {
+  it('should show no user menu when signed out', () => {
     const banner = renderTopbar();
 
     expect(banner.queryByText(/@/)).not.toBeInTheDocument();

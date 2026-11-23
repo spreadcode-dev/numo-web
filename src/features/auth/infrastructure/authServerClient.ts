@@ -11,6 +11,7 @@ import {
   HTTP_BAD_REQUEST,
   HTTP_CONFLICT,
   HTTP_CREATED,
+  HTTP_NO_CONTENT,
   HTTP_OK,
   HTTP_TOO_MANY_REQUESTS,
   HTTP_UNAUTHORIZED,
@@ -28,6 +29,7 @@ const REGISTER_PATH = '/auth/register';
 const LOGIN_PATH = '/auth/login';
 const REFRESH_PATH = '/auth/refresh';
 const CURRENT_USER_PATH = '/auth/me';
+const LOGOUT_PATH = '/auth/logout';
 
 const SESSION_ENDED: RefreshOutcome = { kind: 'sessionEnded' };
 const REFRESH_UNAVAILABLE: RefreshOutcome = { kind: 'unavailable' };
@@ -200,6 +202,23 @@ async function readRefreshedSession(
   return session === undefined
     ? REFRESH_UNAVAILABLE
     : { kind: 'refreshed', session };
+}
+
+// Signing out never depends on numo-api: a failure here is only logged, and
+// the caller deletes the session cookie either way. The refresh token then
+// simply expires on its own.
+export async function logOut(refreshToken: string): Promise<void> {
+  try {
+    const response = await fetch(numoApiUrl(LOGOUT_PATH), {
+      method: 'POST',
+      headers: { Cookie: refreshTokenCookieHeader(refreshToken) },
+    });
+    if (response.status !== HTTP_NO_CONTENT) {
+      console.error(`numo-api answered ${response.status} to the logout`);
+    }
+  } catch (error) {
+    console.error('numo-api could not be reached to log out:', error);
+  }
 }
 
 export async function fetchCurrentUser(

@@ -40,6 +40,11 @@ export async function saveSession(session: Session): Promise<void> {
   );
 }
 
+export async function deleteSession(): Promise<void> {
+  const cookieStore = await cookies();
+  cookieStore.delete(SESSION_COOKIE);
+}
+
 // The cookie lives as long as the refresh token: after that no request can
 // renew the session anyway.
 export function sessionCookieOptions(session: Session): SessionCookieOptions {

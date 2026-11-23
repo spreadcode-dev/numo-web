@@ -1,8 +1,15 @@
+import { redirect } from 'next/navigation';
 import type { Session } from '@/features/auth/domain/session';
-import { registerAction, signInAction } from './authActions';
-import { register, signIn } from './authServerClient';
-import { saveSession } from './sessionCookie';
+import { registerAction, signInAction, signOutAction } from './authActions';
+import { logOut, register, signIn } from './authServerClient';
+import { deleteSession, readSession, saveSession } from './sessionCookie';
 
+// Like Next.js's own redirect(), it ends the action by throwing.
+vi.mock('next/navigation', () => ({
+  redirect: vi.fn<typeof redirect>(() => {
+    throw new Error('NEXT_REDIRECT');
+  }),
+}));
 vi.mock('./authServerClient');
 vi.mock('./sessionCookie');
 
@@ -71,5 +78,34 @@ describe('signInAction', () => {
         message: expect.stringContaining('SESSION_SECRET'),
       }),
     );
+  });
+});
+
+describe('signOutAction', () => {
+  it('should send the stored refresh token to numo-api', async () => {
+    vi.mocked(readSession).mockResolvedValue(SESSION);
+
+    await expect(signOutAction()).rejects.toThrow('NEXT_REDIRECT');
+
+    expect(logOut).toHaveBeenCalledWith('refresh-123');
+  });
+
+  it('should delete the session and redirect to /login', async () => {
+    vi.mocked(readSession).mockResolvedValue(SESSION);
+
+    await expect(signOutAction()).rejects.toThrow('NEXT_REDIRECT');
+
+    expect(deleteSession).toHaveBeenCalled();
+    expect(redirect).toHaveBeenCalledWith('/login');
+  });
+
+  it('should not call numo-api without a session', async () => {
+    vi.mocked(readSession).mockResolvedValue(undefined);
+
+    await expect(signOutAction()).rejects.toThrow('NEXT_REDIRECT');
+
+    expect(logOut).not.toHaveBeenCalled();
+    expect(deleteSession).toHaveBeenCalled();
+    expect(redirect).toHaveBeenCalledWith('/login');
   });
 });

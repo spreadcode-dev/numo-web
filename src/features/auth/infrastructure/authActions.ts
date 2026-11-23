@@ -2,9 +2,12 @@
 
 import type { RegisterResult } from '@/features/auth/domain/registration';
 import type { Credentials, SignInResult } from '@/features/auth/domain/signIn';
+import { redirect } from 'next/navigation';
 import { UNAVAILABLE } from './apiResponses';
-import { register, signIn } from './authServerClient';
-import { saveSession } from './sessionCookie';
+import { logOut, register, signIn } from './authServerClient';
+import { deleteSession, readSession, saveSession } from './sessionCookie';
+
+const SIGN_IN_PATH = '/login';
 
 export async function registerAction(
   credentials: Credentials,
@@ -29,4 +32,14 @@ export async function signInAction(
     );
     return UNAVAILABLE;
   }
+}
+
+// The session cookie goes even when numo-api can't revoke the refresh token
+// (logOut never throws): the browser never stays signed in after the user
+// asked to leave. `redirect` throws by design, so it comes last.
+export async function signOutAction(): Promise<void> {
+  const session = await readSession();
+  if (session !== undefined) await logOut(session.refreshToken);
+  await deleteSession();
+  redirect(SIGN_IN_PATH);
 }

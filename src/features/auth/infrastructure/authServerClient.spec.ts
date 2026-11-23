@@ -3,6 +3,7 @@ import {
   signIn,
   fetchCurrentUser,
   refreshSession,
+  logOut,
 } from './authServerClient';
 
 const CREDENTIALS = {
@@ -38,6 +39,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
   vi.unstubAllEnvs();
   vi.useRealTimers();
+  vi.restoreAllMocks();
 });
 
 describe('register', () => {
@@ -368,5 +370,47 @@ describe('fetchCurrentUser', () => {
     );
 
     await expect(fetchCurrentUser('access-123')).resolves.toBeUndefined();
+  });
+});
+
+describe('logOut', () => {
+  it('should post the refresh token as numo-api’s cookie to its logout route', async () => {
+    vi.stubEnv('NUMO_API_URL', 'http://numo-api.test');
+    const fetchMock = stubFetch(new Response(undefined, { status: 204 }));
+
+    await logOut('refresh-123');
+
+    expect(fetchMock).toHaveBeenCalledWith('http://numo-api.test/auth/logout', {
+      method: 'POST',
+      headers: { Cookie: 'refresh_token=refresh-123' },
+    });
+  });
+
+  it('should log and resolve when numo-api answers an error', async () => {
+    stubFetch(new Response(undefined, { status: 500 }));
+    const consoleError = vi
+      .spyOn(console, 'error')
+      .mockImplementation(() => undefined);
+
+    await expect(logOut('refresh-123')).resolves.toBeUndefined();
+
+    expect(consoleError).toHaveBeenCalledWith(expect.stringContaining('500'));
+  });
+
+  it('should log and resolve when numo-api is unreachable', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn<typeof fetch>().mockRejectedValue(new TypeError('fetch failed')),
+    );
+    const consoleError = vi
+      .spyOn(console, 'error')
+      .mockImplementation(() => undefined);
+
+    await expect(logOut('refresh-123')).resolves.toBeUndefined();
+
+    expect(consoleError).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.any(TypeError),
+    );
   });
 });
