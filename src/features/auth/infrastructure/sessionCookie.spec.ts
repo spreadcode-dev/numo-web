@@ -2,6 +2,7 @@
 import { cookies } from 'next/headers';
 import type { Session } from '@/features/auth/domain/session';
 import {
+  deleteSession,
   decryptSession,
   encryptSession,
   SESSION_COOKIE,
@@ -113,6 +114,19 @@ describe('saveSession', () => {
       path: '/',
       expires: SESSION.refreshTokenExpiresAt,
     });
+  });
+});
+
+describe('deleteSession', () => {
+  it('should delete the session cookie', async () => {
+    const deleteCookie = vi.fn<CookieStore['delete']>();
+    vi.mocked(cookies).mockResolvedValue({
+      delete: deleteCookie,
+    } as unknown as CookieStore);
+
+    await deleteSession();
+
+    expect(deleteCookie).toHaveBeenCalledWith(SESSION_COOKIE);
   });
 });
 

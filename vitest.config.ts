@@ -16,6 +16,17 @@ const reactNativeWebResolve = {
       find: /^react-native-safe-area-context$/,
       replacement: 'react-native-safe-area-context/lib/module/index.js',
     },
+    // Same for gluestack Menu's animations; its `exports` map hides the
+    // ES-module build, so the alias points at the file itself.
+    {
+      find: /^@legendapp\/motion$/,
+      replacement: fileURLToPath(
+        new URL(
+          './node_modules/@legendapp/motion/lib/module/index.js',
+          import.meta.url,
+        ),
+      ),
+    },
     {
       find: /^nativewind$/,
       replacement: fileURLToPath(

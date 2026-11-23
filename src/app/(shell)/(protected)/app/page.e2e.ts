@@ -6,6 +6,7 @@ import type { MockReply, NumoApiMock } from '@/testing/numoApiMock';
 const LOGIN = 'POST /auth/login';
 const REFRESH = 'POST /auth/refresh';
 const CURRENT_USER = 'GET /auth/me';
+const LOGOUT = 'POST /auth/logout';
 const SESSION_COOKIE = 'numo_session';
 const EMAIL = 'ana@example.com';
 const PASSWORD = 'correct-horse-battery';
@@ -63,6 +64,24 @@ function callsTo(numoApi: NumoApiMock, route: string) {
 
 const welcome = (page: Page) => page.getByRole('heading', { name: 'Welcome' });
 const emailInTopBar = (page: Page) => page.getByRole('banner').getByText(EMAIL);
+const userMenuTrigger = (page: Page) =>
+  page.getByRole('banner').getByRole('button', { name: EMAIL });
+const accountMenu = (page: Page) => page.getByRole('menu', { name: 'Account' });
+const signOutItem = (page: Page) =>
+  page.getByRole('menuitem', { name: 'Sign out' });
+
+async function signInWith(page: Page, numoApi: NumoApiMock, tokens: Tokens) {
+  numoApi.respond(LOGIN, issued(tokens, FRESH_SECONDS));
+  numoApi.respond(CURRENT_USER, KNOWN_USER);
+  await signIn(page);
+  await expect(userMenuTrigger(page)).toBeVisible();
+}
+
+async function expectSignedOut(page: Page) {
+  await expect(page).toHaveURL('/login');
+  await expect(page.getByRole('heading', { name: 'Sign in' })).toBeVisible();
+  expect(await sessionCookieValue(page)).toBeUndefined();
+}
 
 test.describe('protected area (/app)', () => {
   test('redirects to /login without a session and sends no welcome content', async ({
@@ -155,5 +174,120 @@ test.describe('protected area (/app)', () => {
     await expect.poll(() => sessionCookieValue(page)).toBeUndefined();
     await expect(page).toHaveURL('/login');
     await expect(page.getByRole('heading', { name: 'Sign in' })).toBeVisible();
+  });
+});
+
+test.describe('sign-out from the top bar', () => {
+  test('shows the Account menu with the signed-in email', async ({
+    page,
+    numoApi,
+  }) => {
+    await signInWith(page, numoApi, newTokens());
+
+    await userMenuTrigger(page).click();
+
+    await expect(accountMenu(page)).toBeVisible();
+    await expect(accountMenu(page)).toContainText(`Signed in as${EMAIL}`);
+    await expect(signOutItem(page)).toBeVisible();
+    await expect(userMenuTrigger(page)).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    );
+  });
+
+  test('shows the Account menu in the dark theme', async ({
+    page,
+    numoApi,
+  }) => {
+    await signInWith(page, numoApi, newTokens());
+    await page.getByRole('switch', { name: 'Dark theme' }).click();
+    await expect(page.locator('html')).toHaveClass(/\bdark\b/);
+
+    await userMenuTrigger(page).click();
+
+    await expect(accountMenu(page)).toBeVisible();
+    await expect(signOutItem(page)).toBeVisible();
+  });
+
+  test('signs out with the mouse, revoking the stored refresh token', async ({
+    page,
+    numoApi,
+  }) => {
+    const tokens = newTokens();
+    numoApi.respond(LOGOUT, { status: 204 });
+    await signInWith(page, numoApi, tokens);
+
+    await userMenuTrigger(page).click();
+    await signOutItem(page).click();
+
+    await expectSignedOut(page);
+    expect(callsTo(numoApi, LOGOUT)).toEqual([
+      {
+        method: 'POST',
+        path: '/auth/logout',
+        body: undefined,
+        cookie: `refresh_token=${tokens.refreshToken}`,
+      },
+    ]);
+    await page.goto('/app');
+    await expect(page).toHaveURL('/login');
+  });
+
+  test('signs out with the keyboard', async ({ page, numoApi }) => {
+    numoApi.respond(LOGOUT, { status: 204 });
+    await signInWith(page, numoApi, newTokens());
+
+    await userMenuTrigger(page).focus();
+    await page.keyboard.press('Enter');
+    await expect(accountMenu(page)).toBeVisible();
+    await page.keyboard.press('ArrowDown');
+    await expect(signOutItem(page)).toBeFocused();
+    await page.keyboard.press('Enter');
+
+    await expectSignedOut(page);
+    expect(callsTo(numoApi, LOGOUT)).toHaveLength(1);
+  });
+
+  test('closes the menu on Escape and returns focus to the trigger', async ({
+    page,
+    numoApi,
+  }) => {
+    await signInWith(page, numoApi, newTokens());
+    await userMenuTrigger(page).click();
+    await expect(accountMenu(page)).toBeVisible();
+
+    await page.keyboard.press('Escape');
+
+    await expect(accountMenu(page)).toBeHidden();
+    await expect(userMenuTrigger(page)).toBeFocused();
+  });
+
+  test('still signs out locally when numo-api answers 500', async ({
+    page,
+    numoApi,
+  }) => {
+    numoApi.respond(LOGOUT, { status: 500 });
+    await signInWith(page, numoApi, newTokens());
+
+    await userMenuTrigger(page).click();
+    await signOutItem(page).click();
+
+    await expectSignedOut(page);
+    expect(callsTo(numoApi, LOGOUT)).toHaveLength(1);
+  });
+
+  test('still signs out locally when numo-api is unreachable', async ({
+    page,
+    numoApi,
+  }) => {
+    numoApi.goDown(LOGOUT);
+    await signInWith(page, numoApi, newTokens());
+
+    await userMenuTrigger(page).click();
+    await signOutItem(page).click();
+
+    await expectSignedOut(page);
+    await page.goto('/app');
+    await expect(page).toHaveURL('/login');
   });
 });
